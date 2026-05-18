@@ -1,8 +1,8 @@
-// Fetch model ids exposed by The Grid OpenAI-compatible `GET /api/v1/models` catalog.
+// Fetch model ids exposed by The Grid OpenAI-compatible `GET /v1/models` catalog.
 
 import { asyncTryCatchIf, isNetworkError } from "./result.js";
 
-export const GRID_OPENAI_MODELS_URL = "https://api.thegrid.ai/api/v1/models";
+export const GRID_OPENAI_MODELS_URL = "https://api.thegrid.ai/v1/models";
 
 /** Parse `{ data: [ { id: string }, … ] }` (OpenAI-style) or return []. */
 export function parseGridModelsResponse(body: unknown): string[] {

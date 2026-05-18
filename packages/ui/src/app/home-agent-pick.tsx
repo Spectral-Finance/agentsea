@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { memo, useMemo, useState } from "react";
 
 import { GridRecipesLogo } from "./agent-logos";
@@ -53,12 +54,13 @@ export const HomeAgentPick = memo(function HomeAgentPickComp({ agents }: { agent
 
       <ul className={styles["agentGrid"]}>
         {filtered.map((a) => {
-          const muted = !a.available;
-          return (
-            <li
-              key={a.slug}
-              className={`${styles["agentCard"]} ${a.highlight ? styles["agentCard--hot"] : ""} ${muted ? styles["agentCard--muted"] : ""}`.trim()}
-            >
+          const isMoreRecipes = a.slug === "__more_recipes";
+          const muted = !a.available && !isMoreRecipes;
+
+          const cardClass = `${styles["agentCard"]} ${a.highlight ? styles["agentCard--hot"] : ""} ${muted ? styles["agentCard--muted"] : ""}`.trim();
+
+          const inner = (
+            <>
               <div className={styles["agentCard__top"]}>
                 <div className={styles["agentCard__logo"]} aria-hidden>
                   {a.image ? (
@@ -85,6 +87,27 @@ export const HomeAgentPick = memo(function HomeAgentPickComp({ agents }: { agent
                   <span className={styles["agentCard__metricValue"]}>{a.metricValue}</span>
                 </div>
               </div>
+            </>
+          );
+
+          return (
+            <li key={a.slug}>
+              {a.available ? (
+                <Link
+                  href={`/cli?agent=${encodeURIComponent(a.slug)}`}
+                  className={`${cardClass} ${styles["agentCard--clickable"]}`.trim()}
+                >
+                  {inner}
+                </Link>
+              ) : isMoreRecipes ? (
+                <a href={GRID_SPAWN_REQUEST_AGENT_MAILTO} className={`${cardClass} ${styles["agentCard--clickable"]}`.trim()}>
+                  {inner}
+                </a>
+              ) : (
+                <div className={cardClass} title="Not yet provisionable in the open-source bundle — see the CLI guide for the current matrix.">
+                  {inner}
+                </div>
+              )}
             </li>
           );
         })}

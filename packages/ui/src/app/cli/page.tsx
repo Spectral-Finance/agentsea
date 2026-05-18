@@ -1,8 +1,11 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
+import { loadManifest } from "@grid-spawn/sdk/node";
+
 import { CopyCode } from "../copy-code";
 import { GRID_SPAWN_INSTALL_URL, THEGRID_API_KEY_ENV_VAR } from "../home-public-constants";
+import { firstImplementedCloudForAgent } from "../landing-from-manifest";
 import { SiteHeader } from "../site-header";
 import styles from "./page.module.scss";
 
@@ -14,7 +17,41 @@ export const metadata: Metadata = {
 
 const INSTALL_SH = `curl -fsSL ${GRID_SPAWN_INSTALL_URL} | bash`;
 
-export default function CliGuidePage() {
+type CliGuidePageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export default async function CliGuidePage({ searchParams }: CliGuidePageProps) {
+  const resolved = (await searchParams) ?? {};
+  const rawAgent = resolved.agent;
+  const agentSlug =
+    typeof rawAgent === "string" ? rawAgent : Array.isArray(rawAgent) ? rawAgent[0] : undefined;
+
+  const manifest = await loadManifest(false);
+  const agentMeta = agentSlug ? manifest.agents[agentSlug] : undefined;
+  const cloudSlug =
+    agentSlug && agentMeta && !agentMeta.disabled ? firstImplementedCloudForAgent(manifest, agentSlug) : null;
+  const cloudName = cloudSlug ? (manifest.clouds[cloudSlug]?.name ?? cloudSlug) : null;
+
+  const oneLinerSuffix = cloudSlug === "digitalocean" ? " --region nyc3" : "";
+  const agentLaunchBlock =
+    agentSlug && agentMeta && cloudSlug && cloudName ? (
+      <div id="agent-launch" className={styles["agentLaunchBanner"]} tabIndex={-1}>
+        <h2 className={styles["agentLaunchBanner__title"]}>
+          Launch {agentMeta.name} · {cloudName}
+        </h2>
+        <p className={styles["agentLaunchBanner__p"]}>
+          With the CLI installed and credentials set (see the sections below), run:
+        </p>
+        <CopyCode label="shell" code={`grid-spawn ${agentSlug} ${cloudSlug}${oneLinerSuffix}`} />
+        <p className={styles["agentLaunchBanner__foot"]}>
+          <Link href="/" className={styles["agentLaunchBanner__link"]}>
+            ← Pick another agent
+          </Link>
+        </p>
+      </div>
+    ) : null;
+
   return (
     <div className={styles["page"]}>
       <SiteHeader />
@@ -26,6 +63,8 @@ export default function CliGuidePage() {
             cloud token, then run an interactive launcher or short one-liners. The Grid Spawn control plane provisions
             your VM and returns a URL for the in-browser terminal.
           </p>
+
+          {agentLaunchBlock}
 
           <p className={styles["note"]}>
             <strong>Status:</strong> the CLI is not published yet. Use this page as the contract for the first release

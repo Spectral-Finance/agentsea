@@ -22,6 +22,10 @@ npm run grid-spawn -- --help
 
 The bundled **`cli.js`** is gitignored until you build; keep it out of commits or regenerate in CI.
 
+## Releases / supply chain
+
+GitHub Releases hosts `digitalocean-latest` artifacts used by userdata shims under **`../../sh/`**. When publishing from a fork, add **immutable versioned** assets alongside `*-latest` and document their SHA-256; users can set **`GRID_SPAWN_BUNDLE_SHA256`** (see repo **`.env.example`**) so `openclaw.sh` verifies the download.
+
 ## Auth
 
 Platform LLM/key usage is **`THEGRID_API_KEY`** (Grid dashboard). Persisted reuse (optional steps) writes **`~/.config/grid-spawn/thegrid.json`**. An alternate filename from early releases may still be read; see **`packages/cli/src/shared/oauth.ts`**.

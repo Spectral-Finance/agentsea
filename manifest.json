@@ -8,9 +8,9 @@
       "launch": "claude",
       "env": {
         "THEGRID_API_KEY": "${THEGRID_API_KEY}",
-        "ANTHROPIC_BASE_URL": "https://api.thegrid.ai/api/v1",
+        "ANTHROPIC_BASE_URL": "https://api.thegrid.ai/api",
         "ANTHROPIC_AUTH_TOKEN": "${THEGRID_API_KEY}",
-        "ANTHROPIC_API_KEY": "",
+        "ANTHROPIC_API_KEY": "${THEGRID_API_KEY}",
         "CLAUDE_CODE_SKIP_ONBOARDING": "1",
         "CLAUDE_CODE_ENABLE_TELEMETRY": "0"
       },
@@ -59,7 +59,7 @@
       "env": {
         "THEGRID_API_KEY": "${THEGRID_API_KEY}",
         "OPENAI_API_KEY": "${THEGRID_API_KEY}",
-        "OPENAI_BASE_URL": "https://api.thegrid.ai/api/v1"
+        "OPENAI_BASE_URL": "https://api.thegrid.ai/v1"
       },
       "interactive_prompts": {
         "model_id": {
@@ -97,10 +97,10 @@
       "launch": "codex",
       "env": {
         "OPENAI_API_KEY": "${THEGRID_API_KEY}",
-        "OPENAI_BASE_URL": "https://api.thegrid.ai/api/v1",
+        "OPENAI_BASE_URL": "https://api.thegrid.ai/v1",
         "THEGRID_API_KEY": "${THEGRID_API_KEY}"
       },
-      "notes": "Works with THEGRID_API_KEY and OPENAI_BASE_URL pointing at api.thegrid.ai/api/v1; default Codex model is selected from The Grid catalogue in interactive provisioning (MODEL_ID/--model/preferences.json override).",
+      "notes": "Works with THEGRID_API_KEY and OPENAI_BASE_URL pointing at api.thegrid.ai/v1; default Codex model is selected from The Grid catalogue in interactive provisioning (MODEL_ID/--model/preferences.json override).",
       "icon": "https://raw.githubusercontent.com/Spectral-Finance/grid-spawn/main/assets/agents/codex.png",
       "featured_cloud": [
         "digitalocean",
@@ -162,7 +162,7 @@
       "install": "npm install -g @kilocode/cli",
       "launch": "kilocode",
       "env": {
-        "KILO_PROVIDER_TYPE": "\u006f\u0070\u0065\u006e\u0072\u006f\u0075\u0074\u0065\u0072",
+        "KILO_PROVIDER_TYPE": "\u006f\u0070\u0065\u006e\u0074\u006f\u0075\u0074\u0065\u0072",
         "KILO_OPEN_ROUTER_API_KEY": "${THEGRID_API_KEY}",
         "THEGRID_API_KEY": "${THEGRID_API_KEY}"
       },
@@ -198,7 +198,7 @@
       "launch": "hermes",
       "env": {
         "THEGRID_API_KEY": "${THEGRID_API_KEY}",
-        "OPENAI_BASE_URL": "https://api.thegrid.ai/api/v1",
+        "OPENAI_BASE_URL": "https://api.thegrid.ai/v1",
         "OPENAI_API_KEY": "${THEGRID_API_KEY}"
       },
       "notes": "Uses THEGRID_API_KEY. Also OpenAI-compatible via OPENAI_BASE_URL + OPENAI_API_KEY. Installs Python 3.11 via uv. Ships a local web dashboard (port 9119) for configuration, session monitoring, skill browsing, and gateway management — auto-exposed via SSH tunnel when run through Grid Spawn.",
@@ -350,11 +350,12 @@
       "env": {
         "THEGRID_API_KEY": "${THEGRID_API_KEY}",
         "ANTHROPIC_BASE_URL": "https://api.thegrid.ai/api/v1",
-        "ANTHROPIC_API_KEY": "${THEGRID_API_KEY}",
+        "ANTHROPIC_AUTH_TOKEN": "${THEGRID_API_KEY}",
+        "ANTHROPIC_API_KEY": "",
         "OPENAI_API_KEY": "${THEGRID_API_KEY}",
-        "OPENAI_BASE_URL": "https://api.thegrid.ai/api/v1"
+        "OPENAI_BASE_URL": "https://api.thegrid.ai/v1"
       },
-      "notes": "Web GUI that spawns Claude Code and Codex as subprocesses via node-pty. Child processes inherit THEGRID_API_KEY and OpenAI-compatible base URLs. Requires Node.js 22+. Default port 3773.",
+      "notes": "Web GUI that spawns Claude Code and Codex as subprocesses via node-pty. Child processes inherit THEGRID_API_KEY, ANTHROPIC_AUTH_TOKEN to The Grid, and OpenAI-compatible `/v1` base URLs. Requires Node.js 22+. Default port 3773.",
       "icon": "https://raw.githubusercontent.com/Spectral-Finance/grid-spawn/main/assets/agents/t3code.png",
       "featured_cloud": [
         "digitalocean",

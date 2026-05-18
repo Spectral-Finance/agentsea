@@ -44,6 +44,10 @@ export {
 } from "./list.js";
 // pick.ts — cmdPick
 export { cmdPick } from "./pick.js";
+// resume.ts — cmdResume
+export { cmdResume, recoverProvisionCheckpoints } from "./resume.js";
+// cleanup.ts — cmdCleanup
+export { cmdCleanup } from "./cleanup.js";
 // pull-history.ts — cmdPullHistory (recursive child history pull)
 export { cmdPullHistory } from "./pull-history.js";
 // run.ts — cmdRun, cmdRunHeadless, script failure guidance

@@ -34,8 +34,17 @@ import {
   VENDOR_KILO_PROVIDER_TYPE_VALUE,
 } from "./vendor-routing.js";
 
-/** The Grid inference API base used by spawned agents (`GET …/models` validation, OpenAI-compat clients, …). */
-const THEGRID_API_INFERENCE_BASE = "https://api.thegrid.ai/api/v1";
+/** The Grid inference API base used by spawned agents (`GET …/models`, `/chat/completions`, …). */
+const THEGRID_API_INFERENCE_BASE = "https://api.thegrid.ai/v1";
+/** The Grid Anthropic-compatible base used by OpenClaw to avoid OpenAI redirect host blocking. */
+const THEGRID_OPENCLAW_MESSAGES_BASE = "https://messages-beta.api.thegrid.ai/v1";
+
+/**
+ * Base URL for Anthropic SDK / Claude Code (`ANTHROPIC_BASE_URL`). The SDK appends `/v1/messages`.
+ * Grid serves Messages at `https://api.thegrid.ai/api/v1/messages` — so the client base must be
+ * `https://api.thegrid.ai/api` (not `…/api/v1`, which would produce `…/api/v1/v1/messages` and 403/404).
+ */
+const THEGRID_ANTHROPIC_CLIENT_BASE = "https://api.thegrid.ai/api";
 
 /** Default Control UI `/chat` session path (grid-spawn OpenClaw uses agent `main`). */
 const OPENCLAW_CONTROL_UI_DEFAULT_CHAT_SESSION = "agent:main:main";
@@ -181,12 +190,16 @@ async function setupClaudeCodeConfig(runner: CloudRunner, apiKey: string): Promi
   logStep("Configuring Claude Code...");
 
   const escapedKey = jsonEscape(apiKey);
+  // The Grid at ANTHROPIC_BASE_URL: Claude Code / Anthropic SDK may send `x-api-key` from ANTHROPIC_API_KEY
+  // and/or `Authorization: Bearer` from ANTHROPIC_AUTH_TOKEN. Set both to the platform key so inference
+  // stays on api.thegrid.ai only (never api.anthropic.com).
   const settingsJson = `{
   "theme": "dark",
   "editor": "vim",
   "env": {
     "CLAUDE_CODE_ENABLE_TELEMETRY": "0",
-    "ANTHROPIC_BASE_URL": "https://api.thegrid.ai/api/v1",
+    "ANTHROPIC_BASE_URL": "${THEGRID_ANTHROPIC_CLIENT_BASE}",
+    "ANTHROPIC_API_KEY": ${escapedKey},
     "ANTHROPIC_AUTH_TOKEN": ${escapedKey}
   },
   "permissions": {
@@ -447,8 +460,9 @@ function openClawGridPrimaryModel(catalogModelId: string): string {
 }
 
 /**
- * Register **`models.providers.thegrid`** targeting **only** `api.thegrid.ai` (`THEGRID_API_KEY`).
- * Builtin OpenClaw prefixes like **`openrouter/*`** map to third-party provider auth profiles; this avoids that path.
+ * Register `models.providers.thegrid` for OpenClaw against The Grid Anthropic-compatible surface.
+ * We avoid the OpenAI-compatible redirect path here because OpenClaw's transport SSRF policy
+ * can block cross-host redirects (`api.thegrid.ai` -> `synapse.thegrid.ai`) on some releases.
  */
 async function mergeOpenClawGridInferenceProvider(
   runner: CloudRunner,
@@ -456,7 +470,7 @@ async function mergeOpenClawGridInferenceProvider(
   plaintextApiKey: string,
 ): Promise<void> {
   const ocPrimary = openClawGridPrimaryModel(catalogModelId);
-  const inferLit = JSON.stringify(THEGRID_API_INFERENCE_BASE);
+  const inferLit = JSON.stringify(THEGRID_OPENCLAW_MESSAGES_BASE);
   // OpenSSL-claw validates config by resolving `${THEGRID_API_KEY}` markers; systemd/gateway shells may not
   // export `THEGRID_*` yet. Persist the Grid key inlined (openclaw.json is chmod 600 on the VM).
   const apiKeyLit = JSON.stringify(plaintextApiKey);
@@ -477,7 +491,7 @@ async function mergeOpenClawGridInferenceProvider(
     "cfg.models ||= {};",
     "if (!cfg.models.mode) cfg.models.mode = 'merge';",
     "cfg.models.providers ||= {};",
-    "cfg.models.providers[providerId] = { baseUrl: infer, apiKey: apiKeyPlain, api: 'openai-completions', models: [{ id: slug, name: 'The Grid (' + slug + ')' }] };",
+    "cfg.models.providers[providerId] = { baseUrl: infer, apiKey: apiKeyPlain, api: 'anthropic-messages', models: [{ id: slug, name: 'The Grid (' + slug + ')' }] };",
     "cfg.agents ||= {}; cfg.agents.defaults ||= {}; cfg.agents.defaults.model ||= {};",
     "cfg.agents.defaults.model.primary = ocPrimary;",
     "cfg.agents.defaults.models ||= {};",
@@ -590,9 +604,9 @@ async function setupOpenclawConfig(
           mode: "merge",
           providers: {
             [OPENCLAW_GRID_PROVIDER_ID]: {
-              baseUrl: THEGRID_API_INFERENCE_BASE,
+              baseUrl: THEGRID_OPENCLAW_MESSAGES_BASE,
               apiKey,
-              api: "openai-completions",
+              api: "anthropic-messages",
               models: [
                 {
                   id: catalogModelId,
@@ -928,7 +942,9 @@ export async function startHermesDashboard(runner: CloudRunner): Promise<void> {
 // ─── OpenCode Install Command ────────────────────────────────────────────────
 
 function openCodeInstallCmd(): string {
-  return 'OC_ARCH=$(uname -m); case "$OC_ARCH" in aarch64) OC_ARCH=arm64;; x86_64) OC_ARCH=x64;; esac; OC_OS=$(uname -s | tr A-Z a-z); mkdir -p /tmp/opencode-install "$HOME/.opencode/bin" && curl --proto \'=https\' -fsSL -o /tmp/opencode-install/oc.tar.gz "https://github.com/sst/opencode/releases/latest/download/opencode-${OC_OS}-${OC_ARCH}.tar.gz" && if tar -tzf /tmp/opencode-install/oc.tar.gz | grep -qE \'(^/|\\.\\.)\'; then echo "Tarball contains unsafe paths" >&2; exit 1; fi && tar xzf /tmp/opencode-install/oc.tar.gz -C /tmp/opencode-install && mv /tmp/opencode-install/opencode "$HOME/.opencode/bin/" && rm -rf /tmp/opencode-install && for _rc in "$HOME/.bashrc" "$HOME/.profile" "$HOME/.bash_profile"; do grep -q ".opencode/bin" "$_rc" 2>/dev/null || echo \'export PATH="$HOME/.opencode/bin:$PATH"\' >> "$_rc"; done; { [ ! -f "$HOME/.zshrc" ] || grep -q ".opencode/bin" "$HOME/.zshrc" 2>/dev/null || echo \'export PATH="$HOME/.opencode/bin:$PATH"\' >> "$HOME/.zshrc"; }; export PATH="$HOME/.opencode/bin:$PATH"';
+  // Use $VAR not ${VAR} in the release URL: setupAutoUpdate() embeds this in a
+  // systemd-friendly template that rejects "${" (defense against JS interpolation).
+  return 'OC_ARCH=$(uname -m); case "$OC_ARCH" in aarch64) OC_ARCH=arm64;; x86_64) OC_ARCH=x64;; esac; OC_OS=$(uname -s | tr A-Z a-z); mkdir -p /tmp/opencode-install "$HOME/.opencode/bin" && curl --proto \'=https\' -fsSL -o /tmp/opencode-install/oc.tar.gz "https://github.com/sst/opencode/releases/latest/download/opencode-$OC_OS-$OC_ARCH.tar.gz" && if tar -tzf /tmp/opencode-install/oc.tar.gz | grep -qE \'(^/|\\.\\.)\'; then echo "Tarball contains unsafe paths" >&2; exit 1; fi && tar xzf /tmp/opencode-install/oc.tar.gz -C /tmp/opencode-install && mv /tmp/opencode-install/opencode "$HOME/.opencode/bin/" && rm -rf /tmp/opencode-install && for _rc in "$HOME/.bashrc" "$HOME/.profile" "$HOME/.bash_profile"; do grep -q ".opencode/bin" "$_rc" 2>/dev/null || echo \'export PATH="$HOME/.opencode/bin:$PATH"\' >> "$_rc"; done; { [ ! -f "$HOME/.zshrc" ] || grep -q ".opencode/bin" "$HOME/.zshrc" 2>/dev/null || echo \'export PATH="$HOME/.opencode/bin:$PATH"\' >> "$HOME/.zshrc"; }; export PATH="$HOME/.opencode/bin:$PATH"';
 }
 
 // ─── npm prefix helper ────────────────────────────────────────────────────────
@@ -1374,11 +1390,12 @@ function createAgents(runner: CloudRunner): Record<string, AgentConfig> {
       cloudInitTier: "minimal",
       preProvision: detectGithubAuth,
       install: () => installClaudeCode(runner),
+      // Inference is The Grid only: ANTHROPIC_BASE_URL → Grid Anthropic client base (SDK appends /v1/messages).
       envVars: (apiKey) => [
         `THEGRID_API_KEY=${apiKey}`,
-        "ANTHROPIC_BASE_URL=https://api.thegrid.ai/api/v1",
+        `ANTHROPIC_BASE_URL=${THEGRID_ANTHROPIC_CLIENT_BASE}`,
         `ANTHROPIC_AUTH_TOKEN=${apiKey}`,
-        "ANTHROPIC_API_KEY=",
+        `ANTHROPIC_API_KEY=${apiKey}`,
         "CLAUDE_CODE_SKIP_ONBOARDING=1",
         "CLAUDE_CODE_ENABLE_TELEMETRY=0",
       ],
@@ -1410,7 +1427,7 @@ function createAgents(runner: CloudRunner): Record<string, AgentConfig> {
       configure: (_apiKey, modelId, _enabledSteps) => setupCodexConfig(runner, modelId),
       launchCmd: () => "source ~/.spawnrc 2>/dev/null; source ~/.zshrc 2>/dev/null; codex",
       promptCmd: (prompt) =>
-        `source ~/.spawnrc 2>/dev/null; source ~/.zshrc 2>/dev/null; codex --full-auto ${shellQuote(prompt)}`,
+        `source ~/.spawnrc 2>/dev/null; source ~/.zshrc 2>/dev/null; codex exec --sandbox danger-full-access --ask-for-approval=never ${shellQuote(prompt)} < /dev/null`,
       updateCmd: `${NPM_AUTO_UPDATE_SETUP} && ` + "npm install -g $_NPM_G_FLAGS @openai/codex@latest",
     },
 
@@ -1509,7 +1526,7 @@ function createAgents(runner: CloudRunner): Record<string, AgentConfig> {
         ),
       envVars: (apiKey) => [
         `THEGRID_API_KEY=${apiKey}`,
-        "OPENAI_BASE_URL=https://api.thegrid.ai/api/v1",
+        "OPENAI_BASE_URL=https://api.thegrid.ai/v1",
         `OPENAI_API_KEY=${apiKey}`,
         "HERMES_YOLO_MODE=1",
       ],
@@ -1588,12 +1605,14 @@ function createAgents(runner: CloudRunner): Record<string, AgentConfig> {
           "T3 Code",
           `${NPM_PREFIX_SETUP} && npm install -g \${_NPM_G_FLAGS} t3 && ${NPM_GLOBAL_PATH_PERSIST}`,
         ),
+      // Inference is The Grid only — same pattern as claude (Bearer via ANTHROPIC_AUTH_TOKEN; empty ANTHROPIC_API_KEY).
       envVars: (apiKey) => [
         `THEGRID_API_KEY=${apiKey}`,
-        `ANTHROPIC_API_KEY=${apiKey}`,
         "ANTHROPIC_BASE_URL=https://api.thegrid.ai/api/v1",
+        `ANTHROPIC_AUTH_TOKEN=${apiKey}`,
+        "ANTHROPIC_API_KEY=",
         `OPENAI_API_KEY=${apiKey}`,
-        "OPENAI_BASE_URL=https://api.thegrid.ai/api/v1",
+        "OPENAI_BASE_URL=https://api.thegrid.ai/v1",
       ],
       preLaunchMsg: "T3 Code web GUI will open automatically — use it to interact with Claude Code and Codex agents.",
       launchCmd: () =>
@@ -1602,8 +1621,7 @@ function createAgents(runner: CloudRunner): Record<string, AgentConfig> {
         remotePort: 3773,
         browserUrl: (localPort: number) => `http://localhost:${localPort}`,
       },
-      updateCmd:
-        'export PATH="$HOME/.npm-global/bin:$HOME/.bun/bin:$PATH"; ' + "npm install -g ${_NPM_G_FLAGS:-} t3@latest",
+      updateCmd: `${NPM_AUTO_UPDATE_SETUP} && npm install -g $_NPM_G_FLAGS t3@latest`,
     },
 
     cursor: {

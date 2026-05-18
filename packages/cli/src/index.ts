@@ -28,7 +28,9 @@ import {
   cmdMatrix,
   cmdPick,
   cmdPullHistory,
+  cmdResume,
   cmdRun,
+  cmdCleanup,
   cmdRunHeadless,
   cmdStatus,
   cmdTree,
@@ -542,6 +544,16 @@ const DELETE_COMMANDS = new Set([
   "kill",
 ]);
 
+const CLEANUP_COMMANDS = new Set([
+  "cleanup",
+]);
+
+// resume handled separately for --recover / optional spawn-id
+const RESUME_COMMANDS = new Set([
+  "resume",
+  "continue",
+]);
+
 // fix handled separately for optional positional spawn-id argument
 const FIX_COMMANDS = new Set([
   "fix",
@@ -631,6 +643,39 @@ const VERSION_FLAGS = [
 /** Check if trailing args contain a version flag */
 function hasTrailingVersionFlag(args: string[]): boolean {
   return args.slice(1).some((a) => VERSION_FLAGS.includes(a));
+}
+
+/** Handle cleanup subcommand (DigitalOcean tagged droplets past TTL). */
+async function dispatchCleanupCommand(filteredArgs: string[]): Promise<void> {
+  if (hasTrailingHelpFlag(filteredArgs)) {
+    cmdHelp();
+    return;
+  }
+  const args = filteredArgs.slice(1);
+  const dryRun = args.includes("--dry-run");
+  const forceYes = args.includes("--yes") || args.includes("-y");
+  let olderThanHours: number | undefined;
+  const otIdx = args.indexOf("--older-than-hours");
+  if (otIdx >= 0 && args[otIdx + 1] && !args[otIdx + 1].startsWith("-")) {
+    olderThanHours = Number(args[otIdx + 1]);
+  }
+  let cloud: string | undefined;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a.startsWith("-")) {
+      if (a === "--older-than-hours") {
+        i++;
+      }
+      continue;
+    }
+    cloud = a;
+    break;
+  }
+  await cmdCleanup(cloud, {
+    dryRun,
+    forceYes,
+    olderThanHours,
+  });
 }
 
 /** Handle list/ls/history commands with filters and --clear */
@@ -796,6 +841,23 @@ async function dispatchCommand(
   }
   if (DELETE_COMMANDS.has(cmd)) {
     await dispatchDeleteCommand(filteredArgs);
+    return;
+  }
+  if (CLEANUP_COMMANDS.has(cmd)) {
+    await dispatchCleanupCommand(filteredArgs);
+    return;
+  }
+  if (RESUME_COMMANDS.has(cmd)) {
+    if (hasTrailingHelpFlag(filteredArgs)) {
+      cmdHelp();
+      return;
+    }
+    const args = filteredArgs.slice(1);
+    const recoverOnly = args.includes("--recover");
+    const positional = args.find((a) => !a.startsWith("-"));
+    await cmdResume(positional, {
+      recoverOnly,
+    });
     return;
   }
   if (FIX_COMMANDS.has(cmd)) {

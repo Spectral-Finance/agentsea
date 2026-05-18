@@ -168,7 +168,7 @@ server.on("stream", (stream, headers) => {
 
 async function forwardGridChatCompletion(msg, stream) {
   try {
-    const r = await fetch("https://api.thegrid.ai/api/v1/chat/completions", {
+    const r = await fetch("https://api.thegrid.ai/v1/chat/completions", {
       method: "POST",
       headers: {
         "Authorization": "Bearer " + GRID_API_KEY,

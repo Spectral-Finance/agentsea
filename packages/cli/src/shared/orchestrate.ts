@@ -2,6 +2,7 @@
 // Each cloud implements CloudOrchestrator and calls runOrchestration().
 
 import type { SpawnRecord, VMConnection } from "../history.js";
+import type { Manifest } from "../manifest.js";
 import type { CloudRunner } from "./agent-setup.js";
 import type { AgentConfig } from "./agents.js";
 import type { SshTunnelHandle } from "./ssh.js";
@@ -11,24 +12,30 @@ import { getErrorMessage } from "@grid-spawn/sdk";
 import pc from "picocolors";
 import * as v from "valibot";
 import {
+  deleteProvisionCheckpoint,
   generateSpawnId,
   mergeChildHistory,
-  SpawnRecordSchema,
+  patchSpawnRecord,
   saveLaunchCmd,
   saveMetadata,
-  saveSpawnRecord,
+  SpawnRecordSchema,
+  upsertSpawnRecord,
+  writeProvisionCheckpoint,
 } from "../history.js";
 import { offerGithubAuth, setupAutoUpdate, setupSecurityScan, wrapSshCall } from "./agent-setup.js";
 import { tryTarballInstall } from "./agent-tarball.js";
 import { generateEnvConfig } from "./agents.js";
+import { acquireHeadlessProvisionLock } from "./headless-lock.js";
 import { fetchGridModelIds } from "./grid-models.js";
 import { getOrPromptApiKey } from "./oauth.js";
 import { parseJsonWith } from "./parse.js";
+import { provisionPhaseIndex } from "./provision-phases.js";
 import { getSpawnCloudConfigPath, getSpawnPreferencesPath, getTmpDir } from "./paths.js";
 import { asyncTryCatch, asyncTryCatchIf, isOperationalError, tryCatch } from "./result.js";
 import { isWindows } from "./shell.js";
 import { injectSpawnSkill } from "./spawn-skill.js";
 import { sleep, startSshTunnel } from "./ssh.js";
+import { buildCloudOrchestratorForResume } from "./resume-cloud-factory.js";
 import { ensureSshKeys, getSshKeyOpts } from "./ssh-keys.js";
 import { GRID_SPAWN_CLI } from "./cli-invocation.js";
 import { captureEvent, setTelemetryContext } from "./telemetry.js";
@@ -86,6 +93,21 @@ function trackFunnel(step: string, extra: Record<string, unknown> = {}): void {
     elapsed_ms: funnelElapsedMs(),
     ...extra,
   });
+}
+
+function shortProvisionError(err: unknown): string {
+  const m = getErrorMessage(err).replace(/\s+/g, " ").trim();
+  return m.length > 400 ? `${m.slice(0, 397)}...` : m;
+}
+
+function finalizeProvisionSuccess(spawnId: string, softFailures: string[]): void {
+  patchSpawnRecord(spawnId, {
+    provision_phase: "complete",
+    provision_status: softFailures.length > 0 ? "degraded" : "complete",
+    post_install_soft_failures: softFailures.length > 0 ? softFailures : undefined,
+    provision_error: undefined,
+  });
+  deleteProvisionCheckpoint(spawnId);
 }
 
 /**
@@ -328,7 +350,7 @@ function getParentFields(): {
 /** Build and persist a SpawnRecord for a newly-created server. */
 function recordSpawn(spawnId: string, agentName: string, cloudName: string, connection: VMConnection): void {
   const spawnName = process.env.SPAWN_NAME_KEBAB || process.env.SPAWN_NAME || undefined;
-  saveSpawnRecord({
+  upsertSpawnRecord({
     id: spawnId,
     agent: agentName,
     cloud: cloudName,
@@ -340,6 +362,9 @@ function recordSpawn(spawnId: string, agentName: string, cloudName: string, conn
       : {}),
     ...getParentFields(),
     connection,
+    provision_phase: "vm_created",
+    provision_status: "in_progress",
+    provision_updated_at: new Date().toISOString(),
   });
 }
 
@@ -355,6 +380,10 @@ export function appendRecursiveEnvVars(envPairs: string[], spawnId: string): voi
 export interface OrchestrationOptions {
   tryTarball?: (runner: CloudRunner, agentName: string) => Promise<boolean>;
   getApiKey?: (agentSlug?: string, cloudSlug?: string) => Promise<string>;
+  /** For tests: supply a cloud when exercising resumeOrchestrationFromRecord without provider APIs. */
+  testResumeCloud?: CloudOrchestrator;
+  /** For tests: return from resumeOrchestrationFromRecord immediately before runPostInstallPhase (avoids process.exit). */
+  testResumeStopBeforePostInstall?: boolean;
 }
 
 /**
@@ -468,8 +497,9 @@ export async function runOrchestration(
   setTelemetryContext("cloud", cloud.cloudName);
   trackFunnel("funnel_started");
 
+  let failureSpawnId: string | undefined;
+
   const orchestrationResult = await asyncTryCatch(async () => {
-    // 1. Authenticate with cloud provider
     await cloud.authenticate();
     trackFunnel("funnel_cloud_authed");
 
@@ -477,14 +507,24 @@ export async function runOrchestration(
       await cloud.ensureReadyBeforeSizing();
     }
 
+    const spawnId = generateSpawnId();
+    failureSpawnId = spawnId;
+    const stubTs = new Date().toISOString();
+    writeProvisionCheckpoint({
+      id: spawnId,
+      agent: agentName,
+      cloud: cloud.cloudName,
+      timestamp: stubTs,
+      provision_phase: "pending",
+      provision_status: "in_progress",
+      provision_updated_at: stubTs,
+      ...getParentFields(),
+    });
+
     const betaFeatures = new Set((process.env.SPAWN_BETA ?? "").split(",").filter(Boolean));
     const fastMode = process.env.SPAWN_FAST === "1" || betaFeatures.has("parallel");
     const useTarball = fastMode || betaFeatures.has("tarball");
 
-    // Skip cloud-init for minimal-tier agents when using tarballs or snapshots.
-    // Ubuntu 24.04 base images already have curl + git, so minimal agents (claude,
-    // opencode, hermes) don't need the cloud-init package install step.
-    // This saves ~30-60s by just waiting for SSH instead of polling for cloud-init completion.
     if (
       cloud.cloudName !== "local" &&
       (useTarball || cloud.skipAgentInstall) &&
@@ -493,34 +533,40 @@ export async function runOrchestration(
       cloud.skipCloudInit = true;
     }
 
-    // 1b. Size/bundle selection (must happen before createServer)
     await cloud.promptSize();
+    patchSpawnRecord(spawnId, {
+      provision_phase: "cloud_authenticated",
+      provision_status: "in_progress",
+    });
 
-    // 2. Provision server
-    const spawnId = generateSpawnId();
+    acquireHeadlessProvisionLock();
+
     const serverName = await cloud.getServerName();
 
     if (fastMode && cloud.cloudName !== "local") {
-      // ── Fast mode: server boot + setup prompts run concurrently ─────────
-      // Start server creation, then do API key prompt, pre-provision, tarball
-      // download, and account check in parallel with server boot.
-      //
-      // Keep a dummy timer on the event loop so Bun doesn't exit prematurely.
-      // When all concurrent promises settle (especially after Bun.serve.stop()
-      // in the OAuth flow removes its handle), the event loop can appear empty
-      // before the continuation starts new I/O — causing a silent exit(0).
       const keepAlive = setInterval(() => {}, 60_000);
 
       const serverBootPromise = (async () => {
+        patchSpawnRecord(spawnId, {
+          provision_phase: "vm_creating",
+          provision_status: "in_progress",
+        });
         const conn = await cloud.createServer(serverName);
         recordSpawn(spawnId, agentName, cloud.cloudName, conn);
+        patchSpawnRecord(spawnId, {
+          provision_phase: "vm_waiting",
+          provision_status: "in_progress",
+        });
         await cloud.waitForReady();
+        patchSpawnRecord(spawnId, {
+          provision_phase: "vm_ready",
+          provision_status: "in_progress",
+        });
         return conn;
       })();
 
       const resolveApiKey = options?.getApiKey ?? getOrPromptApiKey;
 
-      // These all run concurrently with server boot
       const [bootResult, apiKeyResult] = await Promise.allSettled([
         serverBootPromise,
         resolveApiKey(agentName, cloud.cloudName),
@@ -540,29 +586,39 @@ export async function runOrchestration(
             }),
       ]);
 
-      // Server boot must succeed — retry if it failed
       if (bootResult.status === "rejected") {
         logError(getErrorMessage(bootResult.reason));
         await retryOrQuit("Retry server creation?");
-        // User chose to retry — fall through to sequential path which has full retry loops
-        // (Re-running the concurrent path would re-prompt for API key, etc.)
+        patchSpawnRecord(spawnId, {
+          provision_phase: "vm_creating",
+          provision_status: "in_progress",
+        });
         const connection = await cloud.createServer(serverName);
         recordSpawn(spawnId, agentName, cloud.cloudName, connection);
+        patchSpawnRecord(spawnId, {
+          provision_phase: "vm_waiting",
+          provision_status: "in_progress",
+        });
         await cloud.waitForReady();
+        patchSpawnRecord(spawnId, {
+          provision_phase: "vm_ready",
+          provision_status: "in_progress",
+        });
       }
       trackFunnel("funnel_vm_ready");
 
-      // API key must succeed
       if (apiKeyResult.status === "rejected") {
         throw apiKeyResult.reason;
       }
       const apiKey = apiKeyResult.value;
+      patchSpawnRecord(spawnId, {
+        provision_phase: "credentials_ready",
+        provision_status: "in_progress",
+      });
       trackFunnel("funnel_credentials_ready");
 
-      // Model ID (interactive: pick from Grid `GET /api/v1/models` when catalogue fetch succeeds)
       const modelId = await resolveProvisionModelId(agentName, agent, apiKey);
 
-      // Env config (computed locally, no SSH needed)
       const envPairs = agent.envVars(apiKey);
       if (modelId && agent.modelEnvVar) {
         envPairs.push(`${agent.modelEnvVar}=${modelId}`);
@@ -572,10 +628,13 @@ export async function runOrchestration(
       }
       const envContent = generateEnvConfig(envPairs);
 
-      // Install agent — remote tarball, fallback to live install
       if (cloud.skipAgentInstall) {
         logInfo("Snapshot boot — skipping agent install");
       } else {
+        patchSpawnRecord(spawnId, {
+          provision_phase: "agent_installing",
+          provision_status: "in_progress",
+        });
         let installed = false;
         if (useTarball && !agent.skipTarball) {
           const tarball = options?.tryTarball ?? tryTarballInstall;
@@ -591,17 +650,30 @@ export async function runOrchestration(
             await retryOrQuit("Retry agent install?");
           }
         }
+        patchSpawnRecord(spawnId, {
+          provision_phase: "agent_installed",
+          provision_status: "in_progress",
+        });
       }
       trackFunnel("funnel_install_completed");
 
-      // Inject env + continue with shared post-install flow
       clearInterval(keepAlive);
-      await injectEnvVars(cloud, envContent);
-      await postInstall(cloud, agent, agentName, apiKey, modelId, spawnId, options);
+      const envSoft: string[] = [];
+      patchSpawnRecord(spawnId, {
+        provision_phase: "env_injecting",
+        provision_status: "in_progress",
+      });
+      await injectEnvVars(cloud, envContent, envSoft);
+      patchSpawnRecord(spawnId, {
+        provision_phase: "env_injected",
+        provision_status: "in_progress",
+      });
+      patchSpawnRecord(spawnId, {
+        provision_phase: "post_install",
+        provision_status: "in_progress",
+      });
+      await runPostInstallPhase(cloud, agent, agentName, apiKey, modelId, spawnId, envSoft, options);
     } else {
-      // ── Standard sequential flow ────────────────────────────────────────
-
-      // 1b. Pre-flight account readiness check (DigitalOcean uses ensureReadyBeforeSizing instead)
       if (cloud.checkAccountReady && cloud.cloudName !== "digitalocean") {
         const r = await asyncTryCatch(() => cloud.checkAccountReady!());
         if (!r.ok) {
@@ -610,12 +682,14 @@ export async function runOrchestration(
         }
       }
 
-      // 2. Get API key
       const resolveApiKey = options?.getApiKey ?? getOrPromptApiKey;
       const apiKey = await resolveApiKey(agentName, cloud.cloudName);
+      patchSpawnRecord(spawnId, {
+        provision_phase: "credentials_ready",
+        provision_status: "in_progress",
+      });
       trackFunnel("funnel_credentials_ready");
 
-      // 3. Pre-provision hooks
       if (agent.preProvision) {
         const r = await asyncTryCatch(() => agent.preProvision!());
         if (!r.ok) {
@@ -624,11 +698,13 @@ export async function runOrchestration(
         }
       }
 
-      // 4. Model ID (interactive: pick from Grid catalogue when eligible)
       const modelId = await resolveProvisionModelId(agentName, agent, apiKey);
 
-      // 5. Provision server (retry loop)
       let connection: VMConnection;
+      patchSpawnRecord(spawnId, {
+        provision_phase: "vm_creating",
+        provision_status: "in_progress",
+      });
       for (;;) {
         const r = await asyncTryCatch(() => cloud.createServer(serverName));
         if (r.ok) {
@@ -640,7 +716,10 @@ export async function runOrchestration(
       }
       recordSpawn(spawnId, agentName, cloud.cloudName, connection);
 
-      // 6. Wait for readiness (retry loop)
+      patchSpawnRecord(spawnId, {
+        provision_phase: "vm_waiting",
+        provision_status: "in_progress",
+      });
       for (;;) {
         const r = await asyncTryCatch(() => cloud.waitForReady());
         if (r.ok) {
@@ -649,9 +728,12 @@ export async function runOrchestration(
         logError(getErrorMessage(r.error));
         await retryOrQuit("Server may still be starting. Keep waiting?");
       }
+      patchSpawnRecord(spawnId, {
+        provision_phase: "vm_ready",
+        provision_status: "in_progress",
+      });
       trackFunnel("funnel_vm_ready");
 
-      // 7. Env config
       const envPairs = agent.envVars(apiKey);
       if (modelId && agent.modelEnvVar) {
         envPairs.push(`${agent.modelEnvVar}=${modelId}`);
@@ -661,10 +743,13 @@ export async function runOrchestration(
       }
       const envContent = generateEnvConfig(envPairs);
 
-      // 8. Install agent
       if (cloud.skipAgentInstall) {
         logInfo("Snapshot boot — skipping agent install");
       } else {
+        patchSpawnRecord(spawnId, {
+          provision_phase: "agent_installing",
+          provision_status: "in_progress",
+        });
         let installedFromTarball = false;
         if (cloud.cloudName !== "local" && !agent.skipTarball && useTarball) {
           const tarball = options?.tryTarball ?? tryTarballInstall;
@@ -680,22 +765,148 @@ export async function runOrchestration(
             await retryOrQuit("Retry agent install?");
           }
         }
+        patchSpawnRecord(spawnId, {
+          provision_phase: "agent_installed",
+          provision_status: "in_progress",
+        });
       }
       trackFunnel("funnel_install_completed");
 
-      // Inject env + continue with shared post-install flow
-      await injectEnvVars(cloud, envContent);
-      await postInstall(cloud, agent, agentName, apiKey, modelId, spawnId, options);
+      const envSoft: string[] = [];
+      patchSpawnRecord(spawnId, {
+        provision_phase: "env_injecting",
+        provision_status: "in_progress",
+      });
+      await injectEnvVars(cloud, envContent, envSoft);
+      patchSpawnRecord(spawnId, {
+        provision_phase: "env_injected",
+        provision_status: "in_progress",
+      });
+      patchSpawnRecord(spawnId, {
+        provision_phase: "post_install",
+        provision_status: "in_progress",
+      });
+      await runPostInstallPhase(cloud, agent, agentName, apiKey, modelId, spawnId, envSoft, options);
     }
   });
 
   if (!orchestrationResult.ok) {
+    if (failureSpawnId) {
+      patchSpawnRecord(failureSpawnId, {
+        provision_status: "failed",
+        provision_error: shortProvisionError(orchestrationResult.error),
+      });
+    }
     throw orchestrationResult.error;
   }
 }
 
+/** Continue provisioning from last recorded phase (DigitalOcean / Hetzner SSH clouds). */
+export async function resumeOrchestrationFromRecord(
+  record: SpawnRecord,
+  manifest: Manifest,
+  options?: OrchestrationOptions,
+): Promise<void> {
+  if (!manifest.agents[record.agent]) {
+    throw new Error(`Unknown agent in history: ${record.agent}`);
+  }
+
+  patchSpawnRecord(record.id, {
+    provision_status: "in_progress",
+    provision_error: undefined,
+  });
+
+  const cloud = options?.testResumeCloud ?? (await buildCloudOrchestratorForResume(record));
+  if (!cloud) {
+    throw new Error(
+      `Resume needs a saved SSH connection. Unsupported or missing cloud connection — try ${GRID_SPAWN_CLI} fix.`,
+    );
+  }
+
+  setTelemetryContext("agent", record.agent);
+  setTelemetryContext("cloud", record.cloud);
+
+  await cloud.authenticate();
+
+  const { createCloudAgents } = await import("./agent-setup.js");
+  const { resolveAgent } = createCloudAgents(cloud.runner);
+  const agent = resolveAgent(record.agent);
+
+  const resolveApiKey = options?.getApiKey ?? getOrPromptApiKey;
+  const apiKey = await resolveApiKey(record.agent, record.cloud);
+
+  const modelId = await resolveProvisionModelId(record.agent, agent, apiKey);
+  const betaFeatures = new Set((process.env.SPAWN_BETA ?? "").split(",").filter(Boolean));
+  const useTarball =
+    process.env.SPAWN_FAST === "1" || betaFeatures.has("parallel") || betaFeatures.has("tarball");
+
+  const envPairs = agent.envVars(apiKey);
+  if (modelId && agent.modelEnvVar) {
+    envPairs.push(`${agent.modelEnvVar}=${modelId}`);
+  }
+  if (betaFeatures.has("recursive")) {
+    appendRecursiveEnvVars(envPairs, record.id);
+  }
+  const envContent = generateEnvConfig(envPairs);
+
+  const phaseIdx = provisionPhaseIndex(record.provision_phase);
+
+  if (phaseIdx < provisionPhaseIndex("vm_ready")) {
+    patchSpawnRecord(record.id, {
+      provision_phase: "vm_waiting",
+    });
+    await cloud.waitForReady();
+    patchSpawnRecord(record.id, {
+      provision_phase: "vm_ready",
+    });
+  }
+
+  if (phaseIdx < provisionPhaseIndex("agent_installed")) {
+    if (cloud.skipAgentInstall) {
+      logInfo("Snapshot boot — skipping agent install");
+    } else {
+      patchSpawnRecord(record.id, {
+        provision_phase: "agent_installing",
+      });
+      let installed = false;
+      if (useTarball && !agent.skipTarball) {
+        const tarball = options?.tryTarball ?? tryTarballInstall;
+        installed = await tarball(cloud.runner, record.agent);
+      }
+      if (!installed) {
+        const r = await asyncTryCatch(() => agent.install());
+        if (!r.ok) {
+          throw r.error;
+        }
+      }
+    }
+    patchSpawnRecord(record.id, {
+      provision_phase: "agent_installed",
+    });
+  }
+
+  const envSoft: string[] = [];
+  if (phaseIdx < provisionPhaseIndex("env_injected")) {
+    patchSpawnRecord(record.id, {
+      provision_phase: "env_injecting",
+    });
+    await injectEnvVars(cloud, envContent, envSoft);
+    patchSpawnRecord(record.id, {
+      provision_phase: "env_injected",
+    });
+  }
+
+  patchSpawnRecord(record.id, {
+    provision_phase: "post_install",
+  });
+  if (options?.testResumeStopBeforePostInstall) {
+    return;
+  }
+  await runPostInstallPhase(cloud, agent, record.agent, apiKey, modelId, record.id, envSoft, options);
+}
+
 /** Write env content to ~/.spawnrc and ensure all shell rc files source it. */
-export async function injectEnvVarsToRunner(runner: CloudRunner, envContent: string): Promise<void> {
+export async function injectEnvVarsToRunner(runner: CloudRunner, envContent: string): Promise<boolean> {
   logStep("Setting up environment variables...");
   const envB64 = Buffer.from(envContent).toString("base64");
   if (!/^[A-Za-z0-9+/=]+$/.test(envB64)) {
@@ -713,10 +924,12 @@ export async function injectEnvVarsToRunner(runner: CloudRunner, envContent: str
   );
   if (!envResult.ok) {
     logWarn("Environment setup had errors");
+    return false;
   }
+  return true;
 }
 
-async function injectEnvVars(cloud: CloudOrchestrator, envContent: string): Promise<void> {
+async function injectEnvVars(cloud: CloudOrchestrator, envContent: string, softFailures: string[]): Promise<void> {
   const isLocalWindows = cloud.cloudName === "local" && isWindows();
   if (isLocalWindows) {
     logStep("Setting up environment variables...");
@@ -731,21 +944,27 @@ async function injectEnvVars(cloud: CloudOrchestrator, envContent: string): Prom
     );
     if (!envResult.ok) {
       logWarn("Environment setup had errors");
+      softFailures.push("env_inject");
     }
     return;
   }
-  await injectEnvVarsToRunner(cloud.runner, envContent);
+  const ok = await injectEnvVarsToRunner(cloud.runner, envContent);
+  if (!ok) {
+    softFailures.push("env_inject");
+  }
 }
 
-async function postInstall(
+export async function runPostInstallPhase(
   cloud: CloudOrchestrator,
   agent: AgentConfig,
   agentName: string,
   apiKey: string,
   modelId: string | undefined,
   spawnId: string,
-  _options?: OrchestrationOptions,
+  provisionSoftFailures: string[],
+  options?: OrchestrationOptions,
 ): Promise<void> {
+  const soft = provisionSoftFailures;
   // ── Repo clone + spawn.md (--repo mode) ────────────────────────────────
   // Built-in steps (github, auto-update, etc.) come from the CLI --steps
   // flag, not from spawn.md.  spawn.md only handles custom setup (OAuth,
@@ -764,6 +983,7 @@ async function postInstall(
       );
       if (!cloneResult.ok) {
         logWarn(`Repo clone failed (${getErrorMessage(cloneResult.error)}) — continuing without template`);
+        soft.push("repo_clone");
       } else {
         repoCloned = true;
         const { readRemoteSpawnMd } = await import("./spawn-md.js");
@@ -806,6 +1026,7 @@ async function postInstall(
     );
     if (!configResult.ok) {
       logWarn("Agent configuration failed (continuing with defaults)");
+      soft.push("agent_configure");
     }
   }
   trackFunnel("funnel_configure_completed");
@@ -965,6 +1186,7 @@ async function postInstall(
       });
       if (!tunnelResult.ok) {
         logWarn("Web dashboard tunnel failed — use the TUI instead");
+        soft.push("dashboard_tunnel");
       }
     } else if (cloud.getSignedPreviewUrl) {
       const previewResult = await asyncTryCatchIf(isOperationalError, async () => {
@@ -976,6 +1198,7 @@ async function postInstall(
       });
       if (!previewResult.ok) {
         logWarn("Web dashboard preview failed — use the TUI instead");
+        soft.push("dashboard_preview");
       }
     } else if (cloud.cloudName === "local") {
       if (agent.tunnel.browserUrl) {
@@ -1055,6 +1278,7 @@ async function postInstall(
   const baseLaunchCmd = agent.launchCmd();
   const launchCmd = repoCloned ? `cd ~/project && ${baseLaunchCmd}` : baseLaunchCmd;
   saveLaunchCmd(launchCmd, spawnId);
+  finalizeProvisionSuccess(spawnId, soft);
 
   // In headless mode, provisioning is done — skip the interactive session.
   // If --prompt was provided and the agent has a promptCmd, execute the prompt on the VM.

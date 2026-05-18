@@ -37,6 +37,44 @@
   margin: 0 0 pad(6);
 }
 
+.agentLaunchBanner {
+  scroll-margin-top: pad(6);
+  @include padding(4, 5);
+  border-radius: br(m);
+  border: 1px solid color-mix(in srgb, rgb(var(--highlight)) 35%, c(stroke-2));
+  background: color-mix(in srgb, c(base-2) 92%, c(base-1));
+  margin: 0 0 pad(6);
+}
+
+.agentLaunchBanner__title {
+  @include font(600);
+  @include text(header-3);
+  color: c(text-1);
+  margin: 0 0 pad(2);
+}
+
+.agentLaunchBanner__p,
+.agentLaunchBanner__foot {
+  @include text(text-s);
+  color: c(text-2);
+  line-height: 1.55;
+  margin: 0 0 pad(3);
+}
+
+.agentLaunchBanner__foot {
+  margin-top: pad(3);
+  margin-bottom: 0;
+}
+
+.agentLaunchBanner__link {
+  color: rgb(var(--highlight));
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
 .section {
   margin-bottom: pad(8);
 

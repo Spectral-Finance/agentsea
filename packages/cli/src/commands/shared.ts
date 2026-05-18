@@ -662,7 +662,7 @@ export function validateRunSecurity(agent: string, cloud: string, prompt?: strin
   const r = tryCatch(() => {
     validateIdentifier(agent, "Agent name");
     validateIdentifier(cloud, "Cloud name");
-    if (prompt) {
+    if (prompt !== undefined) {
       validatePrompt(prompt);
     }
   });

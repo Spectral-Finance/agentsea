@@ -1,0 +1,239 @@
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
+import { asyncTryCatch, isString } from "@grid-spawn/sdk";
+import { loadManifest } from "../manifest.js";
+import { createConsoleMocks, createMockManifest, mockClackPrompts, restoreMocks } from "./test-helpers";
+
+/**
+ * Tests for detectAndFixSwappedArgs and resolveAndLog logic in commands/run.ts.
+ *
+ * These functions handle two important CLI UX features:
+ * - Swapped argument detection: "spawn sprite claude" -> "spawn claude sprite"
+ * - Display name resolution with logging: "Claude Code" -> "claude" with info message
+ *
+ * Previously, these were only tested through full cmdRun integration tests.
+ * This file tests the logic paths directly through cmdRun with minimal mocking,
+ * focusing on the SPECIFIC behaviors of swap detection and resolution logging.
+ *
+ * Coverage gaps addressed:
+ * - detectAndFixSwappedArgs: no swap needed (both valid), swap detected, neither valid
+ * - resolveAndLog: no resolution needed, agent resolved, cloud resolved, both resolved
+ * - Edge case: swapped args after display name resolution
+ * - Edge case: resolution to a key that then fails validation
+ */
+
+const {
+  logError: mockLogError,
+  logInfo: mockLogInfo,
+  logStep: mockLogStep,
+  logWarn: mockLogWarn,
+  spinnerStart: mockSpinnerStart,
+  spinnerStop: mockSpinnerStop,
+} = mockClackPrompts();
+
+// Import commands after mock setup
+const { cmdRun } = await import("../commands/index.js");
+
+const mockManifest = createMockManifest();
+
+describe("detectAndFixSwappedArgs via cmdRun", () => {
+  let consoleMocks: ReturnType<typeof createConsoleMocks>;
+  let originalFetch: typeof global.fetch;
+  let processExitSpy: ReturnType<typeof spyOn>;
+
+  function setManifestAndScript(manifest: any) {
+    global.fetch = mock(async (url: string) => {
+      if (isString(url) && url.includes("manifest.json")) {
+        return new Response(JSON.stringify(manifest));
+      }
+      return new Response("#!/bin/bash\necho test");
+    });
+    return loadManifest(true);
+  }
+
+  beforeEach(async () => {
+    consoleMocks = createConsoleMocks();
+    mockLogError.mockClear();
+    mockLogInfo.mockClear();
+    mockLogStep.mockClear();
+    mockLogWarn.mockClear();
+    mockSpinnerStart.mockClear();
+    mockSpinnerStop.mockClear();
+
+    processExitSpy = spyOn(process, "exit").mockImplementation(() => {
+      throw new Error("process.exit");
+    });
+
+    originalFetch = global.fetch;
+    await setManifestAndScript(mockManifest);
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    processExitSpy.mockRestore();
+    restoreMocks(consoleMocks.log, consoleMocks.error);
+  });
+
+  // ── Swap detection ─────────────────────────────────────────────────
+
+  describe("swapped arguments detection", () => {
+    it("should detect and fix swapped agent/cloud args", async () => {
+      await setManifestAndScript(mockManifest);
+
+      // "sprite" is a cloud, "claude" is an agent - they're swapped
+      await asyncTryCatch(() => cmdRun("sprite", "claude"));
+
+      const infoCalls = mockLogInfo.mock.calls.map((c: unknown[]) => c.join(" "));
+      expect(infoCalls.some((msg: string) => msg.includes("swapped"))).toBe(true);
+      expect(infoCalls.some((msg: string) => msg.includes("grid-spawn claude sprite"))).toBe(true);
+    });
+
+    it("should proceed correctly after swapping args", async () => {
+      await setManifestAndScript(mockManifest);
+
+      await asyncTryCatch(() => cmdRun("sprite", "claude"));
+
+      // After swap, should launch with correct names
+      const stepCalls = mockLogStep.mock.calls.map((c: unknown[]) => c.join(" "));
+      expect(stepCalls.some((msg: string) => msg.includes("Claude Code") && msg.includes("Sprite"))).toBe(true);
+    });
+
+    it("should not swap when args are in correct order", async () => {
+      await setManifestAndScript(mockManifest);
+
+      await asyncTryCatch(() => cmdRun("claude", "sprite"));
+
+      const warnCalls = mockLogWarn.mock.calls.map((c: unknown[]) => c.join(" "));
+      expect(warnCalls.some((msg: string) => msg.includes("swapped"))).toBe(false);
+    });
+
+    it("should not swap when first arg is not a cloud key", async () => {
+      await setManifestAndScript(mockManifest);
+
+      // "unknown" is not a cloud, so no swap should occur
+      await asyncTryCatch(() => cmdRun("unknown", "sprite"));
+
+      const warnCalls = mockLogWarn.mock.calls.map((c: unknown[]) => c.join(" "));
+      expect(warnCalls.some((msg: string) => msg.includes("swapped"))).toBe(false);
+    });
+
+    it("should not swap when second arg is not an agent key", async () => {
+      await setManifestAndScript(mockManifest);
+
+      // "sprite" is a cloud but "unknown" is not an agent
+      await asyncTryCatch(() => cmdRun("sprite", "unknown"));
+
+      const warnCalls = mockLogWarn.mock.calls.map((c: unknown[]) => c.join(" "));
+      expect(warnCalls.some((msg: string) => msg.includes("swapped"))).toBe(false);
+    });
+
+    it("should not swap when both args are agents", async () => {
+      await setManifestAndScript(mockManifest);
+
+      // Both are agents, not a cloud+agent swap
+      await asyncTryCatch(() => cmdRun("claude", "codex"));
+
+      const warnCalls = mockLogWarn.mock.calls.map((c: unknown[]) => c.join(" "));
+      expect(warnCalls.some((msg: string) => msg.includes("swapped"))).toBe(false);
+    });
+
+    it("should not swap when both args are clouds", async () => {
+      await setManifestAndScript(mockManifest);
+
+      await asyncTryCatch(() => cmdRun("sprite", "hetzner"));
+
+      // sprite IS a cloud and hetzner is NOT an agent, so the swap condition
+      // (!manifest.agents[agent] && manifest.clouds[agent] && manifest.agents[cloud])
+      // checks manifest.agents["hetzner"] which is falsy, so no swap
+      const warnCalls = mockLogWarn.mock.calls.map((c: unknown[]) => c.join(" "));
+      expect(warnCalls.some((msg: string) => msg.includes("swapped"))).toBe(false);
+    });
+  });
+
+  // ── Swap with missing implementation ────────────────────────────────
+
+  describe("swapped args with missing implementation", () => {
+    it("should swap args then fail at implementation check for missing combo", async () => {
+      await setManifestAndScript(mockManifest);
+
+      // hetzner is a cloud, codex is an agent - swapped
+      // After swap: cmdRun("codex", "hetzner") - but hetzner/codex is "missing"
+      await asyncTryCatch(() => cmdRun("hetzner", "codex"));
+
+      // Should detect the swap
+      const infoCalls = mockLogInfo.mock.calls.map((c: unknown[]) => c.join(" "));
+      expect(infoCalls.some((msg: string) => msg.includes("swapped"))).toBe(true);
+
+      // Should then fail at implementation check
+      const errorCalls = mockLogError.mock.calls.map((c: unknown[]) => c.join(" "));
+      expect(errorCalls.some((msg: string) => msg.includes("not yet implemented"))).toBe(true);
+    });
+  });
+});
+
+// ── Prompt with swapped args ─────────────────────────────────────────────────
+
+describe("prompt handling with swapped args", () => {
+  let consoleMocks: ReturnType<typeof createConsoleMocks>;
+  let originalFetch: typeof global.fetch;
+  let processExitSpy: ReturnType<typeof spyOn>;
+
+  function setManifestAndScript(manifest: any) {
+    global.fetch = mock(async (url: string) => {
+      if (isString(url) && url.includes("manifest.json")) {
+        return new Response(JSON.stringify(manifest));
+      }
+      return new Response("#!/bin/bash\necho test");
+    });
+    return loadManifest(true);
+  }
+
+  beforeEach(async () => {
+    consoleMocks = createConsoleMocks();
+    mockLogError.mockClear();
+    mockLogInfo.mockClear();
+    mockLogStep.mockClear();
+    mockLogWarn.mockClear();
+    mockSpinnerStart.mockClear();
+    mockSpinnerStop.mockClear();
+
+    processExitSpy = spyOn(process, "exit").mockImplementation(() => {
+      throw new Error("process.exit");
+    });
+
+    originalFetch = global.fetch;
+    await setManifestAndScript(mockManifest);
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    processExitSpy.mockRestore();
+    restoreMocks(consoleMocks.log, consoleMocks.error);
+  });
+
+  it("should swap args and show 'with prompt' when prompt provided", async () => {
+    await setManifestAndScript(mockManifest);
+
+    // Swapped: cloud first, agent second, with prompt
+    await asyncTryCatch(() => cmdRun("sprite", "claude", "Fix all bugs"));
+
+    // Should detect swap
+    const infoCalls = mockLogInfo.mock.calls.map((c: unknown[]) => c.join(" "));
+    expect(infoCalls.some((msg: string) => msg.includes("swapped"))).toBe(true);
+
+    // Should show launch message with prompt
+    const stepCalls = mockLogStep.mock.calls.map((c: unknown[]) => c.join(" "));
+    expect(stepCalls.some((msg: string) => msg.includes("with prompt"))).toBe(true);
+  });
+
+  it("should validate prompt even when args are swapped", async () => {
+    await setManifestAndScript(mockManifest);
+
+    // Swapped args with dangerous prompt
+    await asyncTryCatch(() => cmdRun("sprite", "claude", "$(rm -rf /)"));
+
+    const errorCalls = mockLogError.mock.calls.map((c: unknown[]) => c.join(" "));
+    expect(errorCalls.some((msg: string) => msg.includes("shell syntax") || msg.includes("command substitution"))).toBe(
+      true,
+    );
+  });
+});

@@ -1794,6 +1794,34 @@ export async function listServers(): Promise<CloudInstance[]> {
   return results;
 }
 
+export interface GridSpawnDropletRef {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
+/** Droplets tagged with Grid Spawn attribution (`spawn`). */
+export async function listGridSpawnDroplets(): Promise<GridSpawnDropletRef[]> {
+  const droplets = await doGetAll("/droplets", "droplets");
+  const results: GridSpawnDropletRef[] = [];
+  for (const d of droplets) {
+    const tags = d.tags;
+    if (!Array.isArray(tags) || !tags.includes(SPAWN_DIGITALOCEAN_ATTRIBUTION_TAG)) {
+      continue;
+    }
+    const id = d.id != null ? String(d.id) : "";
+    if (!id) {
+      continue;
+    }
+    results.push({
+      id,
+      name: isString(d.name) ? d.name : "",
+      createdAt: isString(d.created_at) ? d.created_at : "",
+    });
+  }
+  return results;
+}
+
 export async function destroyServer(dropletId?: string): Promise<void> {
   const id = dropletId || _state.dropletId;
   if (!id) {

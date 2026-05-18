@@ -2,10 +2,10 @@
 # e2e/lib/interactive.sh — AI-driven interactive provision & verification
 #
 # Instead of running spawn in headless mode (SPAWN_NON_INTERACTIVE=1), this
-# runs spawn interactively with an AI agent (Claude Haiku) responding to
+# runs spawn interactively with The Grid–driven chat responding to
 # prompts like a human user would. Tests the real user experience end-to-end.
 #
-# Requires: ANTHROPIC_API_KEY (for the AI driver), plus normal cloud creds.
+# Requires: THEGRID_API_KEY (AI driver uses The Grid OpenAI-compatible chat + agent under test), plus cloud creds.
 set -eo pipefail
 
 # ---------------------------------------------------------------------------
@@ -110,9 +110,9 @@ interactive_provision() {
     return 1
   fi
 
-  # Require AI driver key
-  if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
-    log_err "ANTHROPIC_API_KEY required for interactive mode"
+  # Require Grid key (harness driver + agent)
+  if [ -z "${THEGRID_API_KEY:-}" ]; then
+    log_err "THEGRID_API_KEY required for interactive mode"
     return 1
   fi
 

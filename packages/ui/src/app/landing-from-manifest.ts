@@ -1,5 +1,15 @@
 import type { Manifest } from "@grid-spawn/sdk";
-import { agentKeys } from "@grid-spawn/sdk";
+import { agentKeys, cloudKeys, matrixStatus } from "@grid-spawn/sdk";
+
+/** First cloud key (manifest order) with an implemented matrix cell for this agent, or null. */
+export function firstImplementedCloudForAgent(m: Manifest, agentSlug: string): string | null {
+  for (const cloud of cloudKeys(m)) {
+    if (matrixStatus(m, cloud, agentSlug) === "implemented") {
+      return cloud;
+    }
+  }
+  return null;
+}
 
 /** Homepage agent card VM — populated from repo `manifest.json` via `@grid-spawn/sdk`. */
 

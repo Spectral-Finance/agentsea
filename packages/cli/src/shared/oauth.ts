@@ -1,4 +1,10 @@
 // shared/oauth.ts — The Grid API key handling (manual entry; OAuth TBD).
+//
+// Enterprise / automation: there is no browser OAuth for The Grid in this CLI yet.
+// Use a key issued from your The Grid organization (or CI secret) and set THEGRID_API_KEY,
+// or persist via ~/.config/grid-spawn/thegrid.json after a successful run.
+// For SSO-backed orgs, follow your internal docs for API key issuance until first-party
+// OAuth is wired here.
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -11,7 +17,7 @@ import { LEGACY_SAVED_API_KEY_CONFIG_STEM } from "./vendor-routing.js";
 
 // ─── Key Validation ──────────────────────────────────────────────────────────
 
-/** Validate THEGRID_API_KEY via Grid `GET /api/v1/models` (best-effort; skips on network errors). */
+/** Validate THEGRID_API_KEY via Grid `GET /v1/models` (best-effort; skips on network errors). */
 export async function verifyTheGridApiKey(apiKey: string): Promise<boolean> {
   if (!apiKey) {
     return false;
@@ -27,8 +33,8 @@ export async function verifyTheGridApiKey(apiKey: string): Promise<boolean> {
 
   const result = await asyncTryCatchIf(isNetworkError, async () => {
     // Use the OpenAI-compatible models list — it returns 200 when the key is valid.
-    // (/api/v1/auth/key has been observed to 404 on production; models is the stable probe.)
-    const resp = await fetch("https://api.thegrid.ai/api/v1/models", {
+    // (`/auth/key` has been observed to 404 on production; models is the stable probe.)
+    const resp = await fetch("https://api.thegrid.ai/v1/models", {
       headers: {
         Authorization: `Bearer ${apiKey}`,
       },

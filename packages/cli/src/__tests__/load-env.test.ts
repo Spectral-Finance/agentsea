@@ -1,0 +1,76 @@
+/**
+ * Tests for load-env.ts resolution rules (GRID_SPAWN_ROOT vs cwd walk).
+ * Uses exported loadGridSpawnDotenv — dotenv does not override existing env vars.
+ */
+
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { loadGridSpawnDotenv } from "../load-env.js";
+
+describe("loadGridSpawnDotenv", () => {
+  let snapshot: Record<string, string | undefined>;
+
+  beforeEach(() => {
+    snapshot = {
+      GRID_SPAWN_ROOT: process.env.GRID_SPAWN_ROOT,
+      LOAD_ENV_TEST_A: process.env.LOAD_ENV_TEST_A,
+      LOAD_ENV_TEST_B: process.env.LOAD_ENV_TEST_B,
+    };
+  });
+
+  afterEach(() => {
+    for (const [k, v] of Object.entries(snapshot)) {
+      if (v === undefined) {
+        delete process.env[k];
+      } else {
+        process.env[k as keyof NodeJS.ProcessEnv] = v;
+      }
+    }
+  });
+
+  it("loads .env from GRID_SPAWN_ROOT without overriding preset vars", () => {
+    const dir = mkdtempSync(join(tmpdir(), "grid-env-root-"));
+    try {
+      writeFileSync(join(dir, ".env"), 'LOAD_ENV_TEST_A=from-file\nLOAD_ENV_TEST_B=also-from-file\n');
+      process.env.GRID_SPAWN_ROOT = dir;
+      process.env.LOAD_ENV_TEST_A = "preset";
+      delete process.env.LOAD_ENV_TEST_B;
+      loadGridSpawnDotenv();
+      expect(process.env.LOAD_ENV_TEST_A).toBe("preset");
+      expect(process.env.LOAD_ENV_TEST_B).toBe("also-from-file");
+    } finally {
+      rmSync(dir, {
+        recursive: true,
+        force: true,
+      });
+    }
+  });
+
+  it("walks up from cwd when GRID_SPAWN_ROOT is unset", () => {
+    const repo = mkdtempSync(join(tmpdir(), "grid-env-repo-"));
+    const nested = join(repo, "nested");
+    mkdirSync(nested, {
+      recursive: true,
+    });
+    writeFileSync(join(repo, "manifest.json"), "{}");
+    writeFileSync(join(repo, ".env"), "LOAD_ENV_TEST_B=walked\n");
+
+    delete process.env.GRID_SPAWN_ROOT;
+    delete process.env.LOAD_ENV_TEST_B;
+
+    const prev = process.cwd();
+    try {
+      process.chdir(nested);
+      loadGridSpawnDotenv();
+      expect(process.env.LOAD_ENV_TEST_B).toBe("walked");
+    } finally {
+      process.chdir(prev);
+      rmSync(repo, {
+        recursive: true,
+        force: true,
+      });
+    }
+  });
+});

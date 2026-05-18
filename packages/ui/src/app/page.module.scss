@@ -171,6 +171,16 @@
   }
 }
 
+.agentCard--clickable {
+  text-decoration: none;
+  color: inherit;
+
+  &:focus-visible {
+    outline: 2px solid rgb(var(--highlight));
+    outline-offset: 2px;
+  }
+}
+
 .agentCard--hot {
   border-color: color-mix(in srgb, rgb(var(--highlight)) 45%, c(stroke-2));
   background: color-mix(in srgb, c(base-2) 88%, c(base-1));

@@ -13,8 +13,17 @@ import {
 import { join } from "node:path";
 import { getErrorMessage } from "@grid-spawn/sdk";
 import * as v from "valibot";
-import { getHistoryPath, getSpawnDir } from "./shared/paths.js";
+import { getHistoryPath, getProvisionRunsDir, getSpawnDir } from "./shared/paths.js";
+import {
+  isProvisioningIncomplete,
+  PROVISION_PHASES,
+  type ProvisionPhase,
+  type ProvisionStatus,
+} from "./shared/provision-phases.js";
 import { isFileError, tryCatch, tryCatchIf } from "./shared/result.js";
+
+export type { ProvisionPhase, ProvisionStatus };
+export { isProvisioningIncomplete };
 import { logDebug, logWarn } from "./shared/ui.js";
 
 export interface VMConnection {
@@ -39,6 +48,11 @@ export interface SpawnRecord {
   connection?: VMConnection;
   parent_id?: string;
   depth?: number;
+  provision_phase?: ProvisionPhase;
+  provision_status?: ProvisionStatus;
+  provision_error?: string;
+  provision_updated_at?: string;
+  post_install_soft_failures?: string[];
 }
 
 /** Simplified cloud instance info returned by each provider's listServers(). */
@@ -65,6 +79,17 @@ const VMConnectionSchema = v.object({
   metadata: v.optional(v.record(v.string(), v.string())),
 });
 
+const ProvisionPhaseSchema = v.optional(v.picklist(PROVISION_PHASES));
+const ProvisionStatusSchema = v.optional(
+  v.picklist([
+    "pending",
+    "in_progress",
+    "complete",
+    "failed",
+    "degraded",
+  ]),
+);
+
 export const SpawnRecordSchema = v.object({
   id: v.optional(v.string()), // optional for backwards compat with pre-migration records on disk
   agent: v.string(),
@@ -75,6 +100,17 @@ export const SpawnRecordSchema = v.object({
   connection: v.optional(VMConnectionSchema),
   parent_id: v.optional(v.string()),
   depth: v.optional(v.number()),
+  provision_phase: ProvisionPhaseSchema,
+  provision_status: ProvisionStatusSchema,
+  provision_error: v.optional(v.string()),
+  provision_updated_at: v.optional(v.string()),
+  post_install_soft_failures: v.optional(v.array(v.string())),
+});
+
+const CHECKPOINT_FILE_VERSION = 1;
+const CheckpointFileSchema = v.object({
+  version: v.literal(1),
+  record: SpawnRecordSchema,
 });
 
 /** v1 history file format: { version: 1, records: SpawnRecord[] } */
@@ -189,6 +225,71 @@ function atomicWriteJson(filePath: string, data: unknown): void {
     mode: 0o600,
   });
   renameSync(tmpPath, filePath);
+}
+
+/** Sidecar checkpoint so a crash after VM create can still be recovered (`grid-spawn resume --recover`). */
+export function writeProvisionCheckpoint(record: SpawnRecord): void {
+  if (!record.id) {
+    return;
+  }
+  const dir = getProvisionRunsDir();
+  if (!existsSync(dir)) {
+    mkdirSync(dir, {
+      recursive: true,
+      mode: 0o700,
+    });
+  }
+  const filePath = join(dir, `${record.id}.json`);
+  atomicWriteJson(filePath, {
+    version: CHECKPOINT_FILE_VERSION,
+    record,
+  });
+}
+
+export function readProvisionCheckpoint(spawnId: string): SpawnRecord | null {
+  const filePath = join(getProvisionRunsDir(), `${spawnId}.json`);
+  if (!existsSync(filePath)) {
+    return null;
+  }
+  const parsedFile = tryCatch((): unknown => JSON.parse(readFileSync(filePath, "utf-8")));
+  if (!parsedFile.ok) {
+    return null;
+  }
+  const parsed = v.safeParse(CheckpointFileSchema, parsedFile.data);
+  if (!parsed.success) {
+    return null;
+  }
+  const r = parsed.output.record;
+  const rec: SpawnRecord = {
+    ...r,
+    id: r.id ?? spawnId,
+    provision_phase: r.provision_phase as ProvisionPhase | undefined,
+    provision_status: r.provision_status as ProvisionStatus | undefined,
+  };
+  return rec;
+}
+
+export function deleteProvisionCheckpoint(spawnId: string): void {
+  tryCatch(() => unlinkSync(join(getProvisionRunsDir(), `${spawnId}.json`)));
+}
+
+export function listProvisionCheckpoints(): SpawnRecord[] {
+  const dir = getProvisionRunsDir();
+  if (!existsSync(dir)) {
+    return [];
+  }
+  const out: SpawnRecord[] = [];
+  for (const f of readdirSync(dir)) {
+    if (!f.endsWith(".json")) {
+      continue;
+    }
+    const id = f.replace(/\.json$/u, "");
+    const rec = readProvisionCheckpoint(id);
+    if (rec) {
+      out.push(rec);
+    }
+  }
+  return out;
 }
 
 /** Write history records to disk in v1 format: { version: 1, records: [...] } */
@@ -335,6 +436,8 @@ function backfillRecordIds(records: v.InferOutput<typeof SpawnRecordSchema>[]): 
   return records.map((r) => ({
     ...r,
     id: r.id ?? generateSpawnId(),
+    provision_phase: r.provision_phase as ProvisionPhase | undefined,
+    provision_status: r.provision_status as ProvisionStatus | undefined,
   }));
 }
 
@@ -436,6 +539,53 @@ export function saveSpawnRecord(record: SpawnRecord): void {
     const history = loadHistory();
     history.push(record);
     writeHistory(history);
+  });
+}
+
+/** Insert or replace by `id` (provisioning updates the same spawn row). Syncs crash-safe checkpoint. */
+export function upsertSpawnRecord(record: SpawnRecord): void {
+  const dir = getSpawnDir();
+  if (!existsSync(dir)) {
+    mkdirSync(dir, {
+      recursive: true,
+      mode: 0o700,
+    });
+  }
+  if (!record.id) {
+    record.id = generateSpawnId();
+  }
+
+  let merged: SpawnRecord;
+  withHistoryLock(() => {
+    const history = loadHistory();
+    const idx = history.findIndex((r) => r.id === record.id);
+    merged = idx >= 0 ? { ...history[idx]!, ...record } : record;
+    if (idx >= 0) {
+      history[idx] = merged;
+    } else {
+      history.push(merged);
+    }
+    writeHistory(history);
+  });
+  writeProvisionCheckpoint(merged!);
+}
+
+/** Patch fields on a spawn by id and refresh checkpoint (caller should set provision_* fields as needed). */
+export function patchSpawnRecord(spawnId: string, patch: Partial<SpawnRecord>): void {
+  withHistoryLock(() => {
+    const history = loadHistory();
+    const idx = history.findIndex((r) => r.id === spawnId);
+    if (idx < 0) {
+      return;
+    }
+    const merged: SpawnRecord = {
+      ...history[idx]!,
+      ...patch,
+      provision_updated_at: patch.provision_updated_at ?? new Date().toISOString(),
+    };
+    history[idx] = merged;
+    writeHistory(history);
+    writeProvisionCheckpoint(merged);
   });
 }
 

@@ -7,7 +7,7 @@ export type {
   SkillDef,
 } from "./manifest-schema";
 export { agentKeys, cloudKeys, countImplemented, matrixStatus } from "./manifest-utils";
-export { parseJsonObj } from "./parse";
+export { parseJsonObj, parseJsonWith } from "./parse";
 export type { Result } from "./result";
 export {
   Err,

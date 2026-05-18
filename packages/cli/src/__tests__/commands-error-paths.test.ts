@@ -1,0 +1,385 @@
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
+import { asyncTryCatch, isString } from "@grid-spawn/sdk";
+import { loadManifest } from "../manifest.js";
+import { createConsoleMocks, createMockManifest, mockClackPrompts, restoreMocks } from "./test-helpers";
+
+/**
+ * Tests for commands/ error/validation paths that call process.exit(1).
+ *
+ * - cmdRun with invalid identifiers (injection characters, path traversal)
+ * - cmdRun with unknown agent or cloud names
+ * - cmdRun with unimplemented agent/cloud combinations
+ * - cmdRun with invalid prompts (command injection patterns)
+ * - cmdAgentInfo with unknown agent
+ * - cmdAgentInfo with invalid identifier
+ * - validateNonEmptyString triggering process.exit for empty inputs
+ * - validateImplementation showing available clouds when combination is missing
+ */
+
+const mockManifest = createMockManifest();
+
+const {
+  logError: mockLogError,
+  logInfo: mockLogInfo,
+  logStep: mockLogStep,
+  logWarn: mockLogWarn,
+  spinnerStart: mockSpinnerStart,
+  spinnerStop: mockSpinnerStop,
+} = mockClackPrompts();
+
+// Import commands after @clack/prompts mock is set up
+const { cmdRun, cmdAgentInfo } = await import("../commands/index.js");
+
+describe("Commands Error Paths", () => {
+  let consoleMocks: ReturnType<typeof createConsoleMocks>;
+  let originalFetch: typeof global.fetch;
+  let processExitSpy: ReturnType<typeof spyOn>;
+
+  beforeEach(async () => {
+    consoleMocks = createConsoleMocks();
+    mockLogError.mockClear();
+    mockLogInfo.mockClear();
+    mockLogStep.mockClear();
+    mockLogWarn.mockClear();
+    mockSpinnerStart.mockClear();
+    mockSpinnerStop.mockClear();
+
+    // Mock process.exit to throw instead of exiting
+    processExitSpy = spyOn(process, "exit").mockImplementation((_code?: number): never => {
+      throw new Error("process.exit");
+    });
+
+    // Mock fetch to return our controlled manifest data
+    originalFetch = global.fetch;
+    global.fetch = mock(async () => new Response(JSON.stringify(mockManifest)));
+
+    // Force-refresh the manifest cache
+    await loadManifest(true);
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    processExitSpy.mockRestore();
+    restoreMocks(consoleMocks.log, consoleMocks.error);
+  });
+
+  // ── cmdRun: identifier validation ─────────────────────────────────────
+
+  describe("cmdRun - identifier validation", () => {
+    const invalidCases: Array<
+      [
+        string,
+        string,
+        string,
+      ]
+    > = [
+      [
+        "../etc/passwd",
+        "sprite",
+        "agent path traversal",
+      ],
+      [
+        "InvalidUpperCase",
+        "sprite",
+        "agent uppercase letters",
+      ],
+      [
+        "bad agent name x",
+        "sprite",
+        "agent spaces",
+      ],
+      [
+        "claude;rm",
+        "sprite",
+        "agent shell metacharacters",
+      ],
+      [
+        "claude",
+        "../../root",
+        "cloud path traversal",
+      ],
+      [
+        "claude",
+        "spr$ite",
+        "cloud special characters",
+      ],
+      [
+        "a".repeat(65),
+        "sprite",
+        "agent name exceeding 64 characters",
+      ],
+    ];
+    for (const [agent, cloud, label] of invalidCases) {
+      it(`should reject ${label}`, async () => {
+        await expect(cmdRun(agent, cloud)).rejects.toThrow("process.exit");
+        expect(processExitSpy).toHaveBeenCalledWith(1);
+      });
+    }
+
+    it("should accept agent name at exactly 64 characters", async () => {
+      const name64 = "a".repeat(64);
+      // This will pass identifier validation but fail at validateEntity (unknown agent)
+      await expect(cmdRun(name64, "sprite")).rejects.toThrow("process.exit");
+      // It should get past identifier validation -- the error should be from validateEntity
+      expect(mockLogError).toHaveBeenCalled();
+    });
+  });
+
+  // ── cmdRun: unknown agent/cloud ───────────────────────────────────────
+
+  describe("cmdRun - unknown agent or cloud", () => {
+    it("should exit with error and suggest spawn agents for unknown agent", async () => {
+      await expect(cmdRun("nonexistent", "sprite")).rejects.toThrow("process.exit");
+      expect(processExitSpy).toHaveBeenCalledWith(1);
+
+      const errorCalls = mockLogError.mock.calls.map((c: unknown[]) => c.join(" "));
+      expect(errorCalls.some((msg: string) => msg.includes("Unknown agent"))).toBe(true);
+
+      const infoCalls = mockLogInfo.mock.calls.map((c: unknown[]) => c.join(" "));
+      expect(infoCalls.some((msg: string) => msg.includes("grid-spawn agents"))).toBe(true);
+    });
+
+    it("should exit with error and suggest spawn clouds for unknown cloud", async () => {
+      await expect(cmdRun("claude", "nonexistent")).rejects.toThrow("process.exit");
+      expect(processExitSpy).toHaveBeenCalledWith(1);
+
+      const errorCalls = mockLogError.mock.calls.map((c: unknown[]) => c.join(" "));
+      expect(errorCalls.some((msg: string) => msg.includes("Unknown cloud"))).toBe(true);
+
+      const infoCalls = mockLogInfo.mock.calls.map((c: unknown[]) => c.join(" "));
+      expect(infoCalls.some((msg: string) => msg.includes("grid-spawn clouds"))).toBe(true);
+    });
+  });
+
+  // ── cmdRun: unimplemented combination ─────────────────────────────────
+
+  describe("cmdRun - unimplemented combination", () => {
+    it("should exit with error and suggest available clouds for unimplemented combo", async () => {
+      // hetzner/codex is "missing" in mock manifest, but sprite/codex is "implemented"
+      await expect(cmdRun("codex", "hetzner")).rejects.toThrow("process.exit");
+      expect(processExitSpy).toHaveBeenCalledWith(1);
+
+      const infoCalls = mockLogInfo.mock.calls.map((c: unknown[]) => c.join(" "));
+      // Should suggest sprite as an alternative
+      expect(infoCalls.some((msg: string) => msg.includes("grid-spawn codex sprite"))).toBe(true);
+      // codex has 1 implemented cloud (sprite)
+      expect(infoCalls.some((msg: string) => msg.includes("1 cloud"))).toBe(true);
+    });
+  });
+
+  // ── cmdRun: prompt validation ─────────────────────────────────────────
+
+  describe("cmdRun - prompt validation", () => {
+    const invalidPrompts: Array<
+      [
+        string,
+        string,
+      ]
+    > = [
+      [
+        "$(rm -rf /)",
+        "command substitution $()",
+      ],
+      [
+        "`whoami`",
+        "backtick command substitution",
+      ],
+      [
+        "echo test | bash",
+        "pipe to bash",
+      ],
+      [
+        "fix bugs; rm -rf /",
+        "rm -rf chain",
+      ],
+      [
+        "",
+        "empty prompt",
+      ],
+    ];
+    for (const [prompt, label] of invalidPrompts) {
+      it(`should reject ${label}`, async () => {
+        await expect(cmdRun("claude", "sprite", prompt)).rejects.toThrow("process.exit");
+        expect(processExitSpy).toHaveBeenCalledWith(1);
+      });
+    }
+
+    it("should reject prompt exceeding 10KB", async () => {
+      const largePrompt = "a".repeat(10 * 1024 + 1);
+      await expect(cmdRun("claude", "sprite", largePrompt)).rejects.toThrow("process.exit");
+      expect(processExitSpy).toHaveBeenCalledWith(1);
+    });
+  });
+
+  // ── cmdAgentInfo: error paths ─────────────────────────────────────────
+
+  describe("cmdAgentInfo - error paths", () => {
+    it("should exit with error for unknown agent", async () => {
+      await expect(cmdAgentInfo("nonexistent")).rejects.toThrow("process.exit");
+      expect(processExitSpy).toHaveBeenCalledWith(1);
+
+      const errorCalls = mockLogError.mock.calls.map((c: unknown[]) => c.join(" "));
+      expect(errorCalls.some((msg: string) => msg.includes("Unknown agent"))).toBe(true);
+    });
+
+    const invalidAgentNames = [
+      [
+        "../hack",
+        "invalid identifier characters",
+      ],
+      [
+        "Claude",
+        "uppercase letters",
+      ],
+      [
+        "",
+        "empty name",
+      ],
+      [
+        "   ",
+        "whitespace-only name",
+      ],
+    ];
+    for (const [name, label] of invalidAgentNames) {
+      it(`should reject agent with ${label}`, async () => {
+        await expect(cmdAgentInfo(name)).rejects.toThrow("process.exit");
+        expect(processExitSpy).toHaveBeenCalledWith(1);
+      });
+    }
+  });
+
+  // ── cmdRun: empty input validation ────────────────────────────────────
+
+  describe("cmdRun - empty input handling", () => {
+    const emptyCases: Array<
+      [
+        string,
+        string,
+        string,
+      ]
+    > = [
+      [
+        "claude",
+        "",
+        "empty cloud name",
+      ],
+      [
+        "claude",
+        "   ",
+        "whitespace-only cloud name",
+      ],
+      [
+        "",
+        "sprite",
+        "empty agent name",
+      ],
+    ];
+    for (const [agent, cloud, label] of emptyCases) {
+      it(`should reject ${label}`, async () => {
+        await expect(cmdRun(agent, cloud)).rejects.toThrow("process.exit");
+        expect(processExitSpy).toHaveBeenCalledWith(1);
+      });
+    }
+  });
+
+  // ── cmdRun: valid input reaches script download ───────────────────────
+
+  describe("cmdRun - valid inputs proceed past validation", () => {
+    it("should pass validation for valid agent and cloud and attempt download", async () => {
+      // Mock fetch to simulate script download failure (not a valid script)
+      global.fetch = mock(async (url: string) => {
+        if (isString(url) && url.includes("manifest.json")) {
+          return new Response(JSON.stringify(mockManifest));
+        }
+        // Script download returns non-script content
+        return new Response("not a valid script");
+      });
+
+      // Force refresh manifest with updated fetch
+      await loadManifest(true);
+
+      // cmdRun should pass validation and attempt to download + run the script.
+      // It will fail at validateScriptContent because "not a valid script" lacks shebang.
+      await asyncTryCatch(() => cmdRun("claude", "sprite"));
+
+      // The log.step should have been called with the launch message
+      // (meaning validation passed and it attempted to download)
+      const stepCalls = mockLogStep.mock.calls.map((c: unknown[]) => c.join(" "));
+      expect(stepCalls.some((msg: string) => msg.includes("Claude Code") && msg.includes("Sprite"))).toBe(true);
+    });
+
+    it("should show prompt indicator when prompt is provided", async () => {
+      global.fetch = mock(async (url: string) => {
+        if (isString(url) && url.includes("manifest.json")) {
+          return new Response(JSON.stringify(mockManifest));
+        }
+        return new Response("not a valid script");
+      });
+
+      await loadManifest(true);
+
+      await asyncTryCatch(() => cmdRun("claude", "sprite", "Fix all bugs"));
+
+      const stepCalls = mockLogStep.mock.calls.map((c: unknown[]) => c.join(" "));
+      expect(stepCalls.some((msg: string) => msg.includes("with prompt"))).toBe(true);
+    });
+  });
+
+  // ── cmdRun: batch validation (both errors at once) ──────────────────
+
+  describe("cmdRun - batch validation shows all errors at once", () => {
+    it("should show both unknown agent AND unknown cloud errors together", async () => {
+      await expect(cmdRun("badagent", "badcloud")).rejects.toThrow("process.exit");
+      expect(processExitSpy).toHaveBeenCalledWith(1);
+
+      const errorCalls = mockLogError.mock.calls.map((c: unknown[]) => c.join(" "));
+      const hasAgentError = errorCalls.some((msg: string) => msg.includes("Unknown agent"));
+      const hasCloudError = errorCalls.some((msg: string) => msg.includes("Unknown cloud"));
+      // Both errors should be reported, not just the first one
+      expect(hasAgentError).toBe(true);
+      expect(hasCloudError).toBe(true);
+    });
+
+    it("should show agent error and cloud-is-actually-agent error together", async () => {
+      // "spawn badagent codex" - badagent is unknown, codex is an agent not a cloud
+      await expect(cmdRun("badagent", "codex")).rejects.toThrow("process.exit");
+
+      const errorCalls = mockLogError.mock.calls.map((c: unknown[]) => c.join(" "));
+      const hasAgentError = errorCalls.some((msg: string) => msg.includes("Unknown agent"));
+      const hasCloudError = errorCalls.some((msg: string) => msg.includes("Unknown cloud"));
+      expect(hasAgentError).toBe(true);
+      expect(hasCloudError).toBe(true);
+    });
+
+    it("should only call process.exit once even with multiple errors", async () => {
+      await asyncTryCatch(() => cmdRun("badagent", "badcloud"));
+      // process.exit should be called exactly once (not twice, once per error)
+      expect(processExitSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ── cmdRun: two agents or two clouds ────────────────────────────────
+
+  describe("cmdRun - mismatched argument types", () => {
+    it("should tell user when cloud arg is actually an agent", async () => {
+      // "spawn claude codex" - both are agents, not cloud
+      await expect(cmdRun("claude", "codex")).rejects.toThrow("process.exit");
+      expect(processExitSpy).toHaveBeenCalledWith(1);
+
+      const infoCalls = mockLogInfo.mock.calls.map((c: unknown[]) => c.join(" "));
+      expect(infoCalls.some((msg: string) => msg.includes('"codex" is an agent'))).toBe(true);
+      expect(infoCalls.some((msg: string) => msg.includes("grid-spawn <agent> <cloud>"))).toBe(true);
+    });
+
+    it("should tell user when agent arg is actually a cloud (not swappable)", async () => {
+      // "spawn hetzner sprite" - both are clouds, swap detection won't fire
+      // because sprite is not an agent
+      await expect(cmdRun("hetzner", "sprite")).rejects.toThrow("process.exit");
+      expect(processExitSpy).toHaveBeenCalledWith(1);
+
+      const infoCalls = mockLogInfo.mock.calls.map((c: unknown[]) => c.join(" "));
+      expect(infoCalls.some((msg: string) => msg.includes('"hetzner" is a cloud provider'))).toBe(true);
+      expect(infoCalls.some((msg: string) => msg.includes("grid-spawn <agent> <cloud>"))).toBe(true);
+    });
+  });
+});

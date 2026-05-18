@@ -1,0 +1,506 @@
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { asyncTryCatch, isString } from "@grid-spawn/sdk";
+import { HISTORY_SCHEMA_VERSION } from "../history.js";
+import { loadManifest } from "../manifest.js";
+import { createConsoleMocks, createMockManifest, mockClackPrompts, restoreMocks } from "./test-helpers";
+
+/**
+ * Tests for the cmdRun happy-path pipeline: successful download, history
+ * recording, and env-var passing through execScript -> runBash.
+ *
+ * Existing tests cover:
+ * - cmdRun error paths (invalid identifiers, unknown agents, etc.)
+ * - execScript exit-code-specific error messages (exec-script-errors.test.ts)
+ * - downloadScriptWithFallback failure paths (download-and-failure.test.ts)
+ * - getScriptFailureGuidance in isolation (script-failure-guidance.test.ts)
+ *
+ * This file covers the UNTESTED integration paths:
+ * - Primary URL download succeeds (no fallback needed)
+ * - Primary URL fails, fallback URL succeeds
+ * - saveSpawnRecord is called before script execution (history recording)
+ * - History record includes agent, cloud, timestamp, and optional prompt
+ * - SPAWN_PROMPT and SPAWN_MODE env vars passed to bash when prompt is set
+ * - SPAWN_PROMPT and SPAWN_MODE are NOT set when no prompt is provided
+ * - saveSpawnRecord failure is non-fatal (script still runs)
+ * - Dry-run mode skips script download entirely
+ */
+
+const mockManifest = createMockManifest();
+
+const {
+  logError: mockLogError,
+  logInfo: mockLogInfo,
+  logStep: mockLogStep,
+  spinnerStart: mockSpinnerStart,
+  spinnerStop: mockSpinnerStop,
+  spinnerMessage: mockSpinnerMessage,
+} = mockClackPrompts();
+
+const { cmdRun } = await import("../commands/index.js");
+
+// ── Test helpers ─────────────────────────────────────────────────────────────
+
+const VALID_SCRIPT = "#!/bin/bash\nset -eo pipefail\nexit 0";
+
+/** Track all fetch calls to verify download behavior */
+let fetchCalls: Array<{
+  url: string;
+}> = [];
+
+function mockFetchForDownload(opts: {
+  primaryOk?: boolean;
+  fallbackOk?: boolean;
+  primaryStatus?: number;
+  fallbackStatus?: number;
+  scriptContent?: string;
+}) {
+  const {
+    primaryOk = true,
+    fallbackOk = true,
+    primaryStatus = 200,
+    fallbackStatus = 200,
+    scriptContent = VALID_SCRIPT,
+  } = opts;
+
+  return mock(async (url: string | URL | Request, _init?: RequestInit) => {
+    const urlStr = isString(url) ? url : url instanceof URL ? url.href : url.url;
+    fetchCalls.push({
+      url: urlStr,
+    });
+
+    // Manifest fetch
+    if (urlStr.includes("manifest.json")) {
+      return new Response(JSON.stringify(mockManifest));
+    }
+
+    // Primary script URL (CDN)
+    if (urlStr.includes("spawn.thegrid.ai")) {
+      if (primaryOk) {
+        return new Response(scriptContent, {
+          status: primaryStatus,
+        });
+      }
+      return new Response("error", {
+        status: primaryStatus,
+        statusText: `HTTP ${primaryStatus}`,
+      });
+    }
+
+    // Fallback script URL (raw.githubusercontent.com)
+    if (urlStr.includes("raw.githubusercontent.com")) {
+      if (fallbackOk) {
+        return new Response(scriptContent, {
+          status: fallbackStatus,
+        });
+      }
+      return new Response("error", {
+        status: fallbackStatus,
+        statusText: `HTTP ${fallbackStatus}`,
+      });
+    }
+
+    return new Response("not found", {
+      status: 404,
+    });
+  });
+}
+
+// ── Test suite ───────────────────────────────────────────────────────────────
+
+describe("cmdRun happy-path pipeline", () => {
+  let consoleMocks: ReturnType<typeof createConsoleMocks>;
+  let originalFetch: typeof global.fetch;
+  let processExitSpy: ReturnType<typeof spyOn>;
+  let historyDir: string;
+  let originalSpawnHome: string | undefined;
+
+  beforeEach(async () => {
+    consoleMocks = createConsoleMocks();
+    mockLogError.mockClear();
+    mockLogInfo.mockClear();
+    mockLogStep.mockClear();
+    mockSpinnerStart.mockClear();
+    mockSpinnerStop.mockClear();
+    mockSpinnerMessage.mockClear();
+    fetchCalls = [];
+
+    processExitSpy = spyOn(process, "exit").mockImplementation((_code?: number): never => {
+      throw new Error("process.exit");
+    });
+
+    originalFetch = global.fetch;
+
+    // Set up isolated history directory
+    historyDir = join(process.env.HOME ?? "", `spawn-test-history-${Date.now()}-${Math.random()}`);
+    mkdirSync(historyDir, {
+      recursive: true,
+    });
+    originalSpawnHome = process.env.SPAWN_HOME;
+    process.env.SPAWN_HOME = historyDir;
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    processExitSpy.mockRestore();
+    restoreMocks(consoleMocks.log, consoleMocks.error);
+
+    // Clean up history directory
+    process.env.SPAWN_HOME = originalSpawnHome;
+    if (existsSync(historyDir)) {
+      rmSync(historyDir, {
+        recursive: true,
+        force: true,
+      });
+    }
+  });
+
+  // ── Primary download success ──────────────────────────────────────────────
+
+  describe("primary URL download success", () => {
+    it("should download from primary URL without trying fallback", async () => {
+      global.fetch = mockFetchForDownload({
+        primaryOk: true,
+      });
+      await loadManifest(true);
+
+      await cmdRun("claude", "sprite");
+
+      // Should have fetched the manifest + the primary script URL
+      const scriptFetches = fetchCalls.filter((c) => !c.url.includes("manifest.json"));
+      expect(scriptFetches.length).toBe(1);
+      expect(scriptFetches[0].url).toContain("spawn.thegrid.ai");
+    });
+
+    it("should not call process.exit on successful execution", async () => {
+      global.fetch = mockFetchForDownload({
+        primaryOk: true,
+      });
+      await loadManifest(true);
+
+      await cmdRun("claude", "sprite");
+
+      expect(processExitSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── Fallback download success ─────────────────────────────────────────────
+
+  describe("fallback URL download success", () => {
+    it("should fall back to GitHub when primary URL fails", async () => {
+      global.fetch = mockFetchForDownload({
+        primaryOk: false,
+        primaryStatus: 500,
+        fallbackOk: true,
+      });
+      await loadManifest(true);
+
+      await cmdRun("claude", "sprite");
+
+      // Should have fetched manifest + primary (failed) + fallback (success)
+      const scriptFetches = fetchCalls.filter((c) => !c.url.includes("manifest.json"));
+      expect(scriptFetches.length).toBe(2);
+      expect(scriptFetches[0].url).toContain("spawn.thegrid.ai");
+      expect(scriptFetches[1].url).toContain("raw.githubusercontent.com");
+    });
+  });
+
+  // ── History recording ─────────────────────────────────────────────────────
+
+  describe("history recording during execution", () => {
+    it("should save history record on successful execution", async () => {
+      global.fetch = mockFetchForDownload({
+        primaryOk: true,
+      });
+      await loadManifest(true);
+
+      await cmdRun("claude", "sprite");
+
+      const historyPath = join(historyDir, "history.json");
+      expect(existsSync(historyPath)).toBe(true);
+      const data = JSON.parse(readFileSync(historyPath, "utf-8"));
+      expect(data.version).toBe(HISTORY_SCHEMA_VERSION);
+      expect(data.records.length).toBeGreaterThanOrEqual(1);
+      const record = data.records[data.records.length - 1];
+      expect(record.agent).toBe("claude");
+      expect(record.cloud).toBe("sprite");
+      expect(record.timestamp).toBeDefined();
+    });
+
+    it("should include prompt in history record when provided", async () => {
+      global.fetch = mockFetchForDownload({
+        primaryOk: true,
+      });
+      await loadManifest(true);
+
+      await cmdRun("claude", "sprite", "Fix all bugs");
+
+      const historyPath = join(historyDir, "history.json");
+      const data = JSON.parse(readFileSync(historyPath, "utf-8"));
+      const record = data.records[data.records.length - 1];
+      expect(record.prompt).toBe("Fix all bugs");
+    });
+
+    it("should not include prompt field when no prompt provided", async () => {
+      global.fetch = mockFetchForDownload({
+        primaryOk: true,
+      });
+      await loadManifest(true);
+
+      await cmdRun("claude", "sprite");
+
+      const historyPath = join(historyDir, "history.json");
+      const data = JSON.parse(readFileSync(historyPath, "utf-8"));
+      const record = data.records[data.records.length - 1];
+      expect(record.prompt).toBeUndefined();
+    });
+
+    it("should record timestamp in ISO 8601 format", async () => {
+      global.fetch = mockFetchForDownload({
+        primaryOk: true,
+      });
+      await loadManifest(true);
+
+      const before = new Date().toISOString();
+      await cmdRun("claude", "sprite");
+      const after = new Date().toISOString();
+
+      const historyPath = join(historyDir, "history.json");
+      const data = JSON.parse(readFileSync(historyPath, "utf-8"));
+      const record = data.records[data.records.length - 1];
+      expect(record.timestamp >= before).toBe(true);
+      expect(record.timestamp <= after).toBe(true);
+    });
+
+    it("should record history even when script fails", async () => {
+      const failScript = "#!/bin/bash\nset -eo pipefail\nexit 1";
+      global.fetch = mockFetchForDownload({
+        primaryOk: true,
+        scriptContent: failScript,
+      });
+      await loadManifest(true);
+
+      await asyncTryCatch(() => cmdRun("claude", "sprite"));
+
+      const historyPath = join(historyDir, "history.json");
+      expect(existsSync(historyPath)).toBe(true);
+      const data = JSON.parse(readFileSync(historyPath, "utf-8"));
+      expect(data.records.length).toBeGreaterThanOrEqual(1);
+      expect(data.records[data.records.length - 1].agent).toBe("claude");
+    });
+
+    it("should still execute script when history save fails", async () => {
+      // Make history dir read-only to force saveSpawnRecord failure
+      const readOnlyDir = join(process.env.HOME ?? "", `spawn-test-readonly-${Date.now()}`);
+      mkdirSync(readOnlyDir, {
+        recursive: true,
+      });
+      // Create a file where the directory should be, so mkdir fails
+      writeFileSync(join(readOnlyDir, "history.json"), "not-a-directory");
+      process.env.SPAWN_HOME = readOnlyDir;
+
+      global.fetch = mockFetchForDownload({
+        primaryOk: true,
+      });
+      await loadManifest(true);
+
+      // Should complete without error even though history write might fail
+      await cmdRun("claude", "sprite");
+      expect(processExitSpy).not.toHaveBeenCalled();
+
+      // Cleanup
+      rmSync(readOnlyDir, {
+        recursive: true,
+        force: true,
+      });
+    });
+
+    it("should append to existing history", async () => {
+      // Pre-populate history
+      const existing = [
+        {
+          agent: "codex",
+          cloud: "hetzner",
+          timestamp: "2026-01-01T00:00:00.000Z",
+        },
+      ];
+      writeFileSync(join(historyDir, "history.json"), JSON.stringify(existing));
+
+      global.fetch = mockFetchForDownload({
+        primaryOk: true,
+      });
+      await loadManifest(true);
+
+      await cmdRun("claude", "sprite");
+
+      const historyPath = join(historyDir, "history.json");
+      const data = JSON.parse(readFileSync(historyPath, "utf-8"));
+      expect(data.records).toHaveLength(2);
+      expect(data.records[0].agent).toBe("codex");
+      expect(data.records[1].agent).toBe("claude");
+    });
+  });
+
+  // ── Env var passing via runBash ───────────────────────────────────────────
+
+  describe("SPAWN_PROMPT and SPAWN_MODE env var passing", () => {
+    it("should set both SPAWN_PROMPT and SPAWN_MODE when prompt is provided", async () => {
+      // Single script checks both vars — avoids two separate bash invocations
+      const checkScript = [
+        "#!/bin/bash",
+        "set -eo pipefail",
+        'test "$SPAWN_PROMPT" = "Fix all bugs"',
+        'test "$SPAWN_MODE" = "non-interactive"',
+      ].join("\n");
+      global.fetch = mockFetchForDownload({
+        primaryOk: true,
+        scriptContent: checkScript,
+      });
+      await loadManifest(true);
+
+      await cmdRun("claude", "sprite", "Fix all bugs");
+      expect(processExitSpy).not.toHaveBeenCalled();
+    });
+
+    it("should NOT set SPAWN_PROMPT or SPAWN_MODE when no prompt is provided", async () => {
+      // Single script verifies both vars are unset
+      const checkScript = [
+        "#!/bin/bash",
+        "set -eo pipefail",
+        'test -z "${SPAWN_PROMPT:-}"',
+        'test -z "${SPAWN_MODE:-}"',
+      ].join("\n");
+      global.fetch = mockFetchForDownload({
+        primaryOk: true,
+        scriptContent: checkScript,
+      });
+      await loadManifest(true);
+
+      await cmdRun("claude", "sprite");
+      expect(processExitSpy).not.toHaveBeenCalled();
+    });
+
+    it("should handle prompts with special characters", async () => {
+      const prompt = 'Fix the "login" page & add tests';
+      const checkScript = `#!/bin/bash\nset -eo pipefail\ntest -n "$SPAWN_PROMPT"`;
+      global.fetch = mockFetchForDownload({
+        primaryOk: true,
+        scriptContent: checkScript,
+      });
+      await loadManifest(true);
+
+      await cmdRun("claude", "sprite", prompt);
+      expect(processExitSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── Dry-run mode ──────────────────────────────────────────────────────────
+
+  describe("dry-run mode skips download", () => {
+    it("should skip download, skip history, and show preview with agent/cloud info", async () => {
+      global.fetch = mockFetchForDownload({
+        primaryOk: true,
+      });
+      await loadManifest(true);
+
+      await cmdRun("claude", "sprite", undefined, true);
+
+      // No script download — only manifest fetch
+      const scriptFetches = fetchCalls.filter((c) => c.url.includes("spawn.thegrid.ai") && !c.url.includes("manifest"));
+      expect(scriptFetches).toHaveLength(0);
+
+      // No history written
+      const historyPath = join(historyDir, "history.json");
+      expect(existsSync(historyPath)).toBe(false);
+
+      // Preview shows agent and cloud names
+      const allOutput = consoleMocks.log.mock.calls.map((c: unknown[]) => c.join(" ")).join("\n");
+      expect(allOutput).toContain("Claude Code");
+      expect(allOutput).toContain("Sprite");
+    });
+
+    it("should show prompt in dry-run preview when provided", async () => {
+      global.fetch = mockFetchForDownload({
+        primaryOk: true,
+      });
+      await loadManifest(true);
+
+      await cmdRun("claude", "sprite", "Fix bugs", true);
+
+      const allOutput = consoleMocks.log.mock.calls.map((c: unknown[]) => c.join(" ")).join("\n");
+      expect(allOutput).toContain("Fix bugs");
+    });
+  });
+
+  // ── Launch message formatting ─────────────────────────────────────────────
+
+  describe("launch step message", () => {
+    it("should show 'Launching <agent> on <cloud>' without 'with prompt' when no prompt given", async () => {
+      global.fetch = mockFetchForDownload({
+        primaryOk: true,
+      });
+      await loadManifest(true);
+
+      await cmdRun("claude", "sprite");
+
+      const stepCalls = mockLogStep.mock.calls.map((c: unknown[]) => c.join(" "));
+      const launchMsg = stepCalls.find((msg: string) => msg.includes("Launching"));
+      expect(launchMsg).toBeDefined();
+      expect(launchMsg).toContain("Claude Code");
+      expect(launchMsg).toContain("Sprite");
+      expect(launchMsg).not.toContain("with prompt");
+    });
+
+    it("should append 'with prompt...' when prompt is provided", async () => {
+      global.fetch = mockFetchForDownload({
+        primaryOk: true,
+      });
+      await loadManifest(true);
+
+      await cmdRun("claude", "sprite", "Fix bugs");
+
+      const stepCalls = mockLogStep.mock.calls.map((c: unknown[]) => c.join(" "));
+      const launchMsg = stepCalls.find((msg: string) => msg.includes("Launching"));
+      expect(launchMsg).toContain("with prompt");
+    });
+  });
+
+  // ── Script content validation ─────────────────────────────────────────────
+
+  describe("script content validation during download", () => {
+    it("should reject downloaded script without shebang", async () => {
+      global.fetch = mockFetchForDownload({
+        primaryOk: true,
+        scriptContent: "echo hello\nexit 0",
+      });
+      await loadManifest(true);
+
+      await asyncTryCatch(() => cmdRun("claude", "sprite"));
+
+      const clackErrors = mockLogError.mock.calls.map((c: unknown[]) => c.join(" "));
+      const errOutput = [
+        ...clackErrors,
+        ...consoleMocks.error.mock.calls.map((c: unknown[]) => c.join(" ")),
+      ].join("\n");
+      expect(errOutput).toContain("valid bash script");
+    });
+
+    it("should reject script containing dangerous patterns", async () => {
+      global.fetch = mockFetchForDownload({
+        primaryOk: true,
+        scriptContent: "#!/bin/bash\nrm -rf / --no-preserve-root",
+      });
+      await loadManifest(true);
+
+      await asyncTryCatch(() => cmdRun("claude", "sprite"));
+
+      const clackErrors = mockLogError.mock.calls.map((c: unknown[]) => c.join(" "));
+      const errOutput = [
+        ...clackErrors,
+        ...consoleMocks.error.mock.calls.map((c: unknown[]) => c.join(" ")),
+      ].join("\n");
+      expect(errOutput).toContain("dangerous");
+    });
+  });
+});

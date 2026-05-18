@@ -37,6 +37,11 @@ export function getHistoryPath(): string {
   return join(getSpawnDir(), "history.json");
 }
 
+/** Crash-safe provision checkpoints (~/.config/grid-spawn/runs/). */
+export function getProvisionRunsDir(): string {
+  return join(getSpawnDir(), "runs");
+}
+
 /**
  * Per-cloud credential JSON: ~/.config/grid-spawn/{cloud}.json
  */

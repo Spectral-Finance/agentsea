@@ -30,41 +30,46 @@ function tryLoad(path: string): void {
   }
 }
 
-const rootOverride = process.env.GRID_SPAWN_ROOT?.trim();
-if (rootOverride) {
-  const envPath = join(rootOverride, ".env");
-  if (existsSync(envPath)) {
-    tryLoad(envPath);
-    logEnvDiag(`Loaded dotenv file: ${envPath}`);
+/** Exported for tests — runs the same resolution rules as CLI startup. */
+export function loadGridSpawnDotenv(): void {
+  const rootOverride = process.env.GRID_SPAWN_ROOT?.trim();
+  if (rootOverride) {
+    const envPath = join(rootOverride, ".env");
+    if (existsSync(envPath)) {
+      tryLoad(envPath);
+      logEnvDiag(`Loaded dotenv file: ${envPath}`);
+    } else {
+      logEnvDiag(`GRID_SPAWN_ROOT set but no .env at ${envPath} — using process environment only`);
+    }
   } else {
-    logEnvDiag(`GRID_SPAWN_ROOT set but no .env at ${envPath} — using process environment only`);
-  }
-} else {
-  let dir = process.cwd();
-  let foundManifest = false;
-  for (let i = 0; i < 10; i++) {
-    if (existsSync(join(dir, "manifest.json"))) {
-      foundManifest = true;
-      const envPath = join(dir, ".env");
-      if (existsSync(envPath)) {
-        tryLoad(envPath);
-        logEnvDiag(`Loaded dotenv file: ${envPath} (manifest at ${join(dir, "manifest.json")})`);
-      } else {
-        logEnvDiag(
-          `Found manifest.json at ${dir} but no .env — THEGRID_API_KEY / DIGITALOCEAN_* must come from the shell or GRID_SPAWN_ROOT`,
-        );
+    let dir = process.cwd();
+    let foundManifest = false;
+    for (let i = 0; i < 10; i++) {
+      if (existsSync(join(dir, "manifest.json"))) {
+        foundManifest = true;
+        const envPath = join(dir, ".env");
+        if (existsSync(envPath)) {
+          tryLoad(envPath);
+          logEnvDiag(`Loaded dotenv file: ${envPath} (manifest at ${join(dir, "manifest.json")})`);
+        } else {
+          logEnvDiag(
+            `Found manifest.json at ${dir} but no .env — THEGRID_API_KEY / DIGITALOCEAN_* must come from the shell or GRID_SPAWN_ROOT`,
+          );
+        }
+        break;
       }
-      break;
+      const parent = dirname(dir);
+      if (parent === dir) {
+        break;
+      }
+      dir = parent;
     }
-    const parent = dirname(dir);
-    if (parent === dir) {
-      break;
+    if (!foundManifest) {
+      logEnvDiag(
+        `No repo-root manifest.json within 10 segments of cwd (${process.cwd()}) — dotenv auto-load skipped; use GRID_SPAWN_ROOT`,
+      );
     }
-    dir = parent;
-  }
-  if (!foundManifest) {
-    logEnvDiag(
-      `No repo-root manifest.json within 10 segments of cwd (${process.cwd()}) — dotenv auto-load skipped; use GRID_SPAWN_ROOT`,
-    );
   }
 }
+
+loadGridSpawnDotenv();

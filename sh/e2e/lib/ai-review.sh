@@ -157,7 +157,7 @@ TS_EOF
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer ${api_key}" \
     -d @"${req_file}" \
-    "https://api.thegrid.ai/api/v1/chat/completions" 2>/dev/null) || {
+    "https://api.thegrid.ai/v1/chat/completions" 2>/dev/null) || {
     rm -f "${req_file}" 2>/dev/null || true
     log_warn "AI review skipped (API call failed)"
     return 0
