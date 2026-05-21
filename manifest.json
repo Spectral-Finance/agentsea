@@ -198,10 +198,10 @@
       "launch": "hermes",
       "env": {
         "THEGRID_API_KEY": "${THEGRID_API_KEY}",
-        "OPENAI_BASE_URL": "https://api.thegrid.ai/v1",
+        "OPENAI_BASE_URL": "http://127.0.0.1:4142/v1",
         "OPENAI_API_KEY": "${THEGRID_API_KEY}"
       },
-      "notes": "Uses THEGRID_API_KEY via ~/.hermes/config.yaml (provider: custom, base_url: api.thegrid.ai). Spawn writes ~/.hermes/.env + config.yaml — Hermes v0.14+ ignores OPENAI_* in ~/.spawnrc. Installs Python 3.11 via uv. Ships a local web dashboard (port 9119) for configuration, session monitoring, skill browsing, and gateway management — auto-exposed via SSH tunnel when run through Grid Spawn.",
+      "notes": "Uses THEGRID_API_KEY via ~/.hermes/config.yaml (provider: custom, base_url: local LiteLLM proxy on :4142 forwarding to api.thegrid.ai). Spawn writes ~/.hermes/.env + config.yaml + litellm.yaml — Hermes v0.14+ ignores OPENAI_* in ~/.spawnrc. The proxy follows The Grid's api→synapse 307 redirects (Hermes' HTTP client does not). Installs Python 3.11 via uv. Ships a local web dashboard (port 9119) for configuration, session monitoring, skill browsing, and gateway management — auto-exposed via SSH tunnel when run through Grid Spawn.",
       "icon": "https://raw.githubusercontent.com/Spectral-Finance/grid-spawn/main/assets/agents/hermes.png",
       "featured_cloud": [
         "digitalocean",
@@ -235,7 +235,7 @@
         "JUNIE_THEGRID_API_KEY": "${THEGRID_API_KEY}",
         "THEGRID_API_KEY": "${THEGRID_API_KEY}"
       },
-      "notes": "Uses JUNIE_THEGRID_API_KEY. Subagent tasks may require GPT-4.1 Mini, GPT-4.1, or GPT-5 models enabled on your The Grid account.",
+      "notes": "Spawn writes ~/.junie/models/thegrid.json + ~/.junie/config.json (custom:thegrid) and starts a Junie-only LiteLLM proxy on :4143 — Junie cannot follow api.thegrid.ai → synapse 307 redirects directly.",
       "icon": "https://raw.githubusercontent.com/Spectral-Finance/grid-spawn/main/assets/agents/junie.png",
       "featured_cloud": [
         "digitalocean",
@@ -268,7 +268,7 @@
       "env": {
         "THEGRID_API_KEY": "${THEGRID_API_KEY}"
       },
-      "notes": "Uses THEGRID_API_KEY as the platform key. The CLI command is 'pi'. Config lives in ~/.pi/agent/. Also known as shittycodingagent.ai.",
+      "notes": "Uses THEGRID_API_KEY via ~/.pi/agent/models.json + settings.json (custom provider thegrid → api.thegrid.ai/v1). Spawn writes these during configure(); Pi does not read THEGRID_API_KEY without that config. CLI command is 'pi'. Also known as shittycodingagent.ai.",
       "icon": "https://raw.githubusercontent.com/Spectral-Finance/grid-spawn/main/assets/agents/pi.png",
       "featured_cloud": [
         "digitalocean",
@@ -346,17 +346,17 @@
       "name": "T3 Code",
       "description": "Minimal web GUI for coding agents by Ping.gg — wraps Claude Code and Codex with a browser-based interface",
       "url": "https://github.com/pingdotgg/t3code",
-      "install": "npm install -g t3",
+      "install": "npm install -g t3 @openai/codex",
       "launch": "t3",
       "env": {
         "THEGRID_API_KEY": "${THEGRID_API_KEY}",
-        "ANTHROPIC_BASE_URL": "https://api.thegrid.ai/api/v1",
+        "ANTHROPIC_BASE_URL": "https://messages-beta.api.thegrid.ai",
         "ANTHROPIC_AUTH_TOKEN": "${THEGRID_API_KEY}",
         "ANTHROPIC_API_KEY": "",
         "OPENAI_API_KEY": "${THEGRID_API_KEY}",
         "OPENAI_BASE_URL": "https://api.thegrid.ai/v1"
       },
-      "notes": "Web GUI that spawns Claude Code and Codex as subprocesses via node-pty. Child processes inherit THEGRID_API_KEY, ANTHROPIC_AUTH_TOKEN to The Grid, and OpenAI-compatible `/v1` base URLs. Requires Node.js 22+. Default port 3773.",
+      "notes": "Web GUI that spawns Codex CLI (primary) via LiteLLM responses bridge to agent-standard on The Grid. Spawn installs @openai/codex, configures ~/.codex/config.toml, strips reasoning_effort for Grid compatibility, writes ~/.t3/userdata/settings.json, and starts the local LiteLLM proxy before launch. Requires Node.js 22+. Default port 3773.",
       "icon": "https://raw.githubusercontent.com/Spectral-Finance/grid-spawn/main/assets/agents/t3code.png",
       "featured_cloud": [
         "digitalocean",

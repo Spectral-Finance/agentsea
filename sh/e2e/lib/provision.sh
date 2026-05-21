@@ -252,6 +252,9 @@ CLOUD_ENV
     return 1
   fi
 
+  local grid_inference_base="${THEGRID_API_URL:-https://api.thegrid.ai/v1}"
+  grid_inference_base="${grid_inference_base%/}"
+
   # Build env lines in a temp file to avoid interpolating api_key into shell
   # strings directly (prevents command injection if the key contains shell
   # metacharacters like single quotes, backticks, or dollar signs).
@@ -266,6 +269,9 @@ CLOUD_ENV
     printf '%s\n' "# [spawn:env]"
     printf 'export IS_SANDBOX=%q\n' "1"
     printf 'export THEGRID_API_KEY=%q\n' "${api_key}"
+    if [ -n "${THEGRID_API_URL:-}" ]; then
+      printf 'export THEGRID_API_URL=%q\n' "${grid_inference_base}"
+    fi
   } > "${env_tmp}"
 
   # Add agent-specific env vars
@@ -280,18 +286,18 @@ CLOUD_ENV
     openclaw)
       {
         printf 'export OPENAI_API_KEY=%q\n' "${api_key}"
-        printf 'export OPENAI_BASE_URL=%q\n' "https://api.thegrid.ai/v1"
+        printf 'export OPENAI_BASE_URL=%q\n' "${grid_inference_base}"
       } >> "${env_tmp}"
       ;;
     codex)
       {
         printf 'export OPENAI_API_KEY=%q\n' "${api_key}"
-        printf 'export OPENAI_BASE_URL=%q\n' "https://api.thegrid.ai/v1"
+        printf 'export OPENAI_BASE_URL=%q\n' "${grid_inference_base}"
       } >> "${env_tmp}"
       ;;
     hermes)
       {
-        printf 'export OPENAI_BASE_URL=%q\n' "https://api.thegrid.ai/v1"
+        printf 'export OPENAI_BASE_URL=%q\n' "http://127.0.0.1:4142/v1"
         printf 'export OPENAI_API_KEY=%q\n' "${api_key}"
       } >> "${env_tmp}"
       ;;

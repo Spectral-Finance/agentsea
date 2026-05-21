@@ -16,6 +16,7 @@ import { wrapSshCall } from "./agent-setup.js";
 import { asyncTryCatchIf, isOperationalError } from "./result.js";
 import { logInfo, logStep, logWarn } from "./ui.js";
 import { GRID_INFERENCE_DEFAULT_MODEL_ID } from "./vendor-routing.js";
+import { gridInferenceChatCompletionsUrl } from "./grid-api.js";
 
 /** Human-readable label for Cursor's model picker footer (Grid catalogue id → display name). */
 export function cursorGridModelDisplayName(modelId: string): string {
@@ -141,7 +142,8 @@ server.listen(18644, "127.0.0.1", () => log("Cursor proxy (unary) on 18644"));
 
 // ── BiDi backend (H2C, port 18645) ──────────────────────────────────────────
 
-function getBidiScript(): string {
+function getBidiScript(gridChatCompletionsUrl: string): string {
+  const gridChatUrl = gridChatCompletionsUrl.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   return `import http2 from "node:http2";
 import { appendFileSync } from "node:fs";
 const LOG="/var/log/cursor-proxy-bidi.log";
@@ -190,7 +192,7 @@ server.on("stream", (stream, headers) => {
 
 async function forwardGridChatCompletion(msg, stream) {
   try {
-    const r = await fetch("https://api.thegrid.ai/v1/chat/completions", {
+    const r = await fetch("${gridChatUrl}", {
       method: "POST",
       headers: {
         "Authorization": "Bearer " + GRID_API_KEY,
@@ -342,7 +344,7 @@ export async function setupCursorProxy(runner: CloudRunner, modelId?: string): P
 
   // 2. Upload proxy scripts via base64
   const unaryB64 = Buffer.from(getUnaryScript()).toString("base64");
-  const bidiB64 = Buffer.from(getBidiScript()).toString("base64");
+  const bidiB64 = Buffer.from(getBidiScript(gridInferenceChatCompletionsUrl())).toString("base64");
   const caddyfileB64 = Buffer.from(getCaddyfile()).toString("base64");
 
   for (const b64 of [

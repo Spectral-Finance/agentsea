@@ -42,6 +42,38 @@ export const THEGRID_API_KEY_ENV_VAR = "THEGRID_API_KEY";
 export const THEGRID_API_KEYS_DASHBOARD_ORIGIN = "https://app.thegrid.ai";
 
 /** Agents with end-to-end Grid chat verified on DigitalOcean (provision → configure → LLM). */
-export const CHAT_VERIFIED_AGENT_SLUGS = ["claude", "cursor", "openclaw", "codex", "opencode"] as const;
+export const CHAT_VERIFIED_AGENT_SLUGS = [
+  "claude",
+  "cursor",
+  "openclaw",
+  "codex",
+  "opencode",
+  "kilocode",
+  "hermes",
+  "junie",
+  "pi",
+] as const;
 
 export type ChatVerifiedAgentSlug = (typeof CHAT_VERIFIED_AGENT_SLUGS)[number];
+
+/** Cloud providers shown on the homepage launch flow (Step 2). */
+export const HOME_CLOUD_SLUGS = ["local", "digitalocean", "linode"] as const;
+
+export type HomeCloudSlug = (typeof HOME_CLOUD_SLUGS)[number];
+
+export const HOME_CLOUD_COMING_SOON = new Set<string>(["linode"]);
+
+/** Placeholder copy for Linode until manifest support lands. */
+export const LINODE_PLACEHOLDER = {
+  name: "Linode",
+  description: "Akamai cloud servers (account required)",
+} as const;
+
+/** Local path to DigitalOcean logo in `public/clouds/`. */
+export const DIGITALOCEAN_LOGO_PATH = "/clouds/digitalocean.png";
+
+/** Local path to Linode logo in `public/clouds/`. */
+export const LINODE_LOGO_PATH = "/clouds/linode.png";
+
+/** DigitalOcean token env var (matches manifest + CLI aliases). */
+export const DIGITALOCEAN_ACCESS_TOKEN_ENV_VAR = "DIGITALOCEAN_ACCESS_TOKEN";

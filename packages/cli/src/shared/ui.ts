@@ -356,11 +356,6 @@ export function openBrowser(url: string): void {
   // Always show the URL as fallback (headless VMs, VNC, SSH sessions)
   if (opened) {
     logAlwaysStep(`If the browser didn't open, visit: ${url}`);
-    if (wslLanAlt !== url) {
-      logAlwaysStep(
-        `If the page fails with "origin not allowed" or localhost does not connect from Windows, try: ${wslLanAlt}`,
-      );
-    }
   } else {
     logAlwaysStep(`Please open: ${url}`);
     if (isWslLinux()) {
@@ -510,22 +505,27 @@ export function validateModelId(id: string): boolean {
 const GRID_MODEL_OTHER = "__grid_spawn_model_other__";
 
 /**
- * Let the user choose a model from The Grid catalogue (see `GET …/models`).
- * Adds "Other…" for manual entry. Returns undefined if the user cancels.
+ * Let the user choose a model from The Grid catalogue.
+ * Unfunded models are shown with a hint; caller should gate provisioning on credits.
  */
-export async function promptGridCatalogModelId(catalogueIds: string[], suggestedId: string): Promise<string | undefined> {
-  if (catalogueIds.length === 0) {
+export async function promptGridCatalogModelId(
+  entries: Array<{ id: string; displayName?: string; funded: boolean }>,
+  suggestedId: string,
+): Promise<string | undefined> {
+  if (entries.length === 0) {
     return undefined;
   }
 
+  const catalogueIds = entries.map((entry) => entry.id);
   const initial = catalogueIds.includes(suggestedId) ? suggestedId : catalogueIds[0]!;
 
   const choice = await p.select({
     message: "Which Grid model should this server use?",
     options: [
-      ...catalogueIds.map((id) => ({
-        value: id,
-        label: id,
+      ...entries.map((entry) => ({
+        value: entry.id,
+        label: entry.id,
+        hint: entry.funded ? "credits available" : "no credits yet",
       })),
       {
         value: GRID_MODEL_OTHER,

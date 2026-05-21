@@ -50,20 +50,69 @@ litellm_settings:
 `;
 
 const callbacksPy = `from litellm.integrations.custom_logger import CustomLogger
+import json
 
 class DropEmptyToolsHandler(CustomLogger):
-    def _strip_empty_tools(self, data: dict) -> dict:
+    def _downgrade_json_schema(self, data: dict) -> dict:
+        text = data.get("text")
+        if isinstance(text, dict):
+            fmt = text.get("format")
+            if isinstance(fmt, dict) and fmt.get("type") == "json_schema":
+                text["format"] = {"type": "json_object"}
+        return data
+
+    def _normalize_upstream_request(self, data: dict) -> dict:
+        if not isinstance(data, dict):
+            return data
         if data.get("tools") == []:
             data.pop("tools", None)
         if "tools" not in data and data.get("tool_choice") in ("none", "auto"):
             data.pop("tool_choice", None)
-        return data
+        data.pop("reasoning_effort", None)
+        reasoning = data.get("reasoning")
+        if isinstance(reasoning, dict):
+            reasoning.pop("effort", None)
+            reasoning.pop("summary", None)
+            if not reasoning:
+                data.pop("reasoning", None)
+        return self._downgrade_json_schema(data)
+
+    def _message_reasoning(self, msg) -> str | None:
+        reasoning = getattr(msg, "reasoning_content", None)
+        if reasoning:
+            return reasoning
+        fields = getattr(msg, "provider_specific_fields", None)
+        if isinstance(fields, dict):
+            nested = fields.get("reasoning_content")
+            if nested:
+                return nested
+        return None
+
+    def _normalize_upstream_response(self, response):
+        try:
+            choices = getattr(response, "choices", None)
+            if not choices:
+                return response
+            for choice in choices:
+                msg = getattr(choice, "message", None)
+                if msg is None:
+                    continue
+                content = getattr(msg, "content", None)
+                reasoning = self._message_reasoning(msg)
+                if (content is None or content == "") and reasoning:
+                    msg.content = reasoning
+        except Exception:
+            pass
+        return response
 
     async def async_pre_call_hook(self, user_api_key_dict, cache, data, call_type):
-        return self._strip_empty_tools(data)
+        return self._normalize_upstream_request(data)
 
     async def async_pre_call_deployment_hook(self, kwargs, call_type):
-        return self._strip_empty_tools(kwargs)
+        return self._normalize_upstream_request(kwargs)
+
+    async def async_post_call_success_hook(self, data, user_api_key_dict, response):
+        return self._normalize_upstream_response(response)
 
 proxy_handler_instance = DropEmptyToolsHandler()
 `;
@@ -85,9 +134,10 @@ describe("codex LiteLLM templates (wrapper encode safety + bridge config)", () =
     expect(litellmYaml).toContain("callbacks: codex_litellm_callbacks.proxy_handler_instance");
   });
 
-  it("callback module drops empty tools in pre_call_hook", () => {
+  it("callback module drops empty tools and Grid-incompatible reasoning params", () => {
     expect(callbacksPy).toContain('data.get("tools") == []');
-    expect(callbacksPy).toContain('data.pop("tools", None)');
-    expect(callbacksPy).toContain("async_pre_call_deployment_hook");
+    expect(callbacksPy).toContain('data.pop("reasoning_effort", None)');
+    expect(callbacksPy).toContain('fmt.get("type") == "json_schema"');
+    expect(callbacksPy).toContain("async_post_call_success_hook(self, data, user_api_key_dict, response)");
   });
 });

@@ -1,14 +1,15 @@
 import Link from "next/link";
+import { Suspense } from "react";
 
 import { CopyCode } from "./copy-code";
-import { HomeAgentPick } from "./home-agent-pick";
+import { HomeLaunchFlow } from "./home-launch-flow";
 import {
   GRID_SPAWN_INSTALL_URL,
   GRID_SPAWN_OPENCLAW_DO_ONELINER,
   GRID_SPAWN_PUBLIC_ORIGIN,
   THE_GRID_EXTERNAL_URL,
 } from "./home-public-constants";
-import { homeAgentsFromManifest } from "./landing-from-manifest";
+import { homeAgentCloudAvailability, homeAgentsFromManifest, homeCloudOptionsFromManifest } from "./landing-from-manifest";
 import { SiteHeader } from "./site-header";
 import styles from "./page.module.scss";
 
@@ -29,6 +30,8 @@ const ONE_LINER_PATTERN = `${GRID_SPAWN_PUBLIC_ORIGIN}/<cloud>/<agent>.sh`;
 export default async function HomePage() {
   const manifest = await loadManifest(false);
   const agents = homeAgentsFromManifest(manifest);
+  const cloudOptions = homeCloudOptionsFromManifest(manifest);
+  const agentCloudAvailability = homeAgentCloudAvailability(manifest);
   return (
     <div className={styles["page"]}>
       <SiteHeader />
@@ -43,7 +46,13 @@ export default async function HomePage() {
             </p>
           </section>
 
-          <HomeAgentPick agents={agents} />
+          <Suspense fallback={null}>
+            <HomeLaunchFlow
+              agents={agents}
+              cloudOptions={cloudOptions}
+              agentCloudAvailability={agentCloudAvailability}
+            />
+          </Suspense>
           <section className={styles["band"]} aria-labelledby="without-cli-title">
             <h2 id="without-cli-title" className={styles["h2"]}>
               Without the CLI

@@ -1,7 +1,12 @@
 import type { Manifest } from "@grid-spawn/sdk";
 import { agentKeys, cloudKeys, matrixStatus } from "@grid-spawn/sdk";
 
-import { CHAT_VERIFIED_AGENT_SLUGS } from "./home-public-constants";
+import {
+  CHAT_VERIFIED_AGENT_SLUGS,
+  HOME_CLOUD_COMING_SOON,
+  HOME_CLOUD_SLUGS,
+  LINODE_PLACEHOLDER,
+} from "./home-public-constants";
 
 const CHAT_VERIFIED_ORDER = new Map<string, number>(
   CHAT_VERIFIED_AGENT_SLUGS.map((slug, i) => [slug, i]),
@@ -15,6 +20,71 @@ export function firstImplementedCloudForAgent(m: Manifest, agentSlug: string): s
     }
   }
   return null;
+}
+
+export function isCloudImplementedForAgent(m: Manifest, cloud: string, agentSlug: string): boolean {
+  return matrixStatus(m, cloud, agentSlug) === "implemented";
+}
+
+/** Resolve launch cloud from query param — validates agent, cloud, and matrix cell. */
+export function resolveLaunchCloud(
+  m: Manifest,
+  agentSlug: string | undefined,
+  cloudSlug: string | undefined,
+): { cloudSlug: string; cloudName: string } | null {
+  if (!agentSlug || !cloudSlug) return null;
+  const agentMeta = m.agents[agentSlug];
+  if (!agentMeta || agentMeta.disabled) return null;
+  if (HOME_CLOUD_COMING_SOON.has(cloudSlug)) return null;
+  if (!isCloudImplementedForAgent(m, cloudSlug, agentSlug)) return null;
+  const cloudName = m.clouds[cloudSlug]?.name ?? cloudSlug;
+  return { cloudSlug, cloudName };
+}
+
+export interface HomeCloudVm {
+  slug: string;
+  name: string;
+  description: string;
+  comingSoon: boolean;
+  icon: string | null;
+}
+
+export function homeCloudOptionsFromManifest(m: Manifest): HomeCloudVm[] {
+  return HOME_CLOUD_SLUGS.map((slug) => {
+    if (slug === "linode") {
+      return {
+        slug,
+        name: LINODE_PLACEHOLDER.name,
+        description: LINODE_PLACEHOLDER.description,
+        comingSoon: true,
+        icon: null,
+      };
+    }
+    const cloud = m.clouds[slug];
+    return {
+      slug,
+      name: cloud?.name ?? slug,
+      description: cloud?.description ?? "",
+      comingSoon: HOME_CLOUD_COMING_SOON.has(slug),
+      icon: cloud?.icon ?? null,
+    };
+  });
+}
+
+/** Per-agent list of homepage cloud slugs with implemented matrix cells. */
+export function homeAgentCloudAvailability(m: Manifest): Record<string, string[]> {
+  const map: Record<string, string[]> = {};
+  for (const agentSlug of agentKeys(m)) {
+    const clouds: string[] = [];
+    for (const cloudSlug of HOME_CLOUD_SLUGS) {
+      if (HOME_CLOUD_COMING_SOON.has(cloudSlug)) continue;
+      if (isCloudImplementedForAgent(m, cloudSlug, agentSlug)) {
+        clouds.push(cloudSlug);
+      }
+    }
+    map[agentSlug] = clouds;
+  }
+  return map;
 }
 
 /** Homepage agent card VM — populated from repo `manifest.json` via `@grid-spawn/sdk`. */
@@ -91,4 +161,9 @@ export function homeAgentsFromManifest(m: Manifest): HomeAgentVm[] {
   });
 
   return rows;
+}
+
+/** Raster logo filename under `public/agents/`, if any. */
+export function agentImageFromSlug(slug: string): string | null {
+  return ICON_MAP[slug] ?? null;
 }

@@ -7,6 +7,7 @@ import { describe, expect, it } from "bun:test";
 import type { AgentConfig } from "../../shared/agents.js";
 import { createCloudAgents, type CloudRunner } from "../../shared/agent-setup.js";
 import { createCloudAgentsFromModules } from "../../shared/agent-module-registry.js";
+import { buildJunieGridModelProfile } from "../../shared/junie-config.js";
 import { type E2eAgentSlug, E2E_AGENT_SLUGS } from "./e2e-agents.js";
 
 const noopRunner: CloudRunner = {
@@ -45,13 +46,13 @@ const GRID_ENV_SUBSTRINGS: Record<E2eAgentSlug, string[]> = {
   ],
   opencode: ["THEGRID_API_KEY=test-key"],
   kilocode: ["THEGRID_API_KEY=test-key", "KILO_OPEN_ROUTER_API_KEY=test-key"],
-  hermes: ["THEGRID_API_KEY=test-key", "OPENAI_BASE_URL=https://api.thegrid.ai/v1", "OPENAI_API_KEY=test-key"],
+  hermes: ["THEGRID_API_KEY=test-key", "OPENAI_BASE_URL=http://127.0.0.1:4142/v1", "OPENAI_API_KEY=test-key"],
   junie: ["JUNIE_THEGRID_API_KEY=test-key", "THEGRID_API_KEY=test-key"],
   cursor: ["THEGRID_API_KEY=test-key", "CURSOR_API_KEY=test-key"],
   pi: ["THEGRID_API_KEY=test-key"],
   t3code: [
     "THEGRID_API_KEY=test-key",
-    "ANTHROPIC_BASE_URL=https://api.thegrid.ai/api/v1",
+    "ANTHROPIC_BASE_URL=https://messages-beta.api.thegrid.ai",
     "OPENAI_BASE_URL=https://api.thegrid.ai/v1",
   ],
 };
@@ -121,6 +122,43 @@ describe("agent config contract (createCloudAgents, no cloud)", () => {
     expect(agents.hermes.modelDefault).toBe("agent-standard");
     expect(agents.hermes.modelEnvVar).toBe("LLM_MODEL");
     expect(typeof agents.hermes.configure).toBe("function");
+  });
+
+  it("junie targets The Grid via ~/.junie custom model profile (skip auth wizard)", () => {
+    expect(agents.junie.modelDefault).toBe("agent-standard");
+    expect(typeof agents.junie.configure).toBe("function");
+    expect(typeof agents.junie.preLaunch).toBe("function");
+    expect(agents.junie.launchCmd().includes("JUNIE_MODEL=custom:thegrid")).toBe(true);
+    expect(agents.junie.promptCmd?.("ping").includes("JUNIE_MODEL=custom:thegrid")).toBe(true);
+  });
+
+  it("junie avoids direct api.thegrid.ai in custom profile baseUrl (307 synapse redirect)", () => {
+    const profile = buildJunieGridModelProfile("test-key");
+    expect(profile.baseUrl.startsWith("http://127.0.0.1:")).toBe(true);
+    expect(profile.baseUrl.endsWith("/v1/chat/completions")).toBe(true);
+    expect(profile.baseUrl.includes("api.thegrid.ai")).toBe(false);
+  });
+
+  it("pi targets The Grid via models.json + settings.json (not built-in provider keys)", () => {
+    expect(agents.pi.modelDefault).toBe("agent-standard");
+    expect(typeof agents.pi.configure).toBe("function");
+  });
+
+  it("t3code installs Codex CLI and routes it to The Grid via LiteLLM proxy", () => {
+    expect(agents.t3code.modelDefault).toBe("agent-standard");
+    expect(typeof agents.t3code.configure).toBe("function");
+    expect(typeof agents.t3code.preLaunch).toBe("function");
+    expect(agents.t3code.launchCmd().includes("4141/health/liveliness")).toBe(true);
+    expect(agents.t3code.launchCmd().includes("npm-global/bin")).toBe(true);
+    const blob = agents.t3code.envVars("test-key").join("\n");
+    expect(blob.includes("THEGRID_API_KEY=test-key")).toBe(true);
+    expect(blob.includes("OPENAI_API_KEY=test-key")).toBe(true);
+  });
+
+  it("hermes avoids direct api.thegrid.ai chat/completions (307 synapse redirect)", () => {
+    const lines = agents.hermes.envVars("test-key");
+    expect(lines.some((l) => l.startsWith("OPENAI_BASE_URL=http://127.0.0.1:4142/v1"))).toBe(true);
+    expect(lines.some((l) => l.startsWith("OPENAI_BASE_URL=https://api.thegrid.ai/v1"))).toBe(false);
   });
 
   it("codex configures LiteLLM responses bridge for Grid chat/completions", () => {

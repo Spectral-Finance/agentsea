@@ -18,6 +18,13 @@ import { asyncTryCatchIf, isOperationalError, tryCatch } from "../shared/result.
 import { SSH_BASE_OPTS, SSH_INTERACTIVE_OPTS, spawnInteractive, startSshTunnel } from "../shared/ssh.js";
 import { ensureSshKeys, getSshKeyOpts } from "../shared/ssh-keys.js";
 import { GRID_SPAWN_CLI } from "../shared/cli-invocation.js";
+import {
+  issueT3PairingBrowserUrl,
+  logT3PairingHandoff,
+  rewriteT3RemotePairingUrl,
+  startT3PairingBrowserWatcher,
+  T3_REMOTE_PORT,
+} from "../shared/t3-config.js";
 import { logWarn, openBrowser, rewriteLocalhostHttpUrlForWindowsBrowserFromWsl, shellQuote } from "../shared/ui.js";
 import { getErrorMessage } from "./shared.js";
 
@@ -26,6 +33,45 @@ function tunnelTemplateToUrlSuffix(template: string): string {
   return template
     .replace(/^http:\/\/localhost:__PORT__/, "")
     .replace(/^http:\/\/127\.0\.0\.1:__PORT__/, "");
+}
+
+async function openAgentTunnelBrowser(
+  agentKey: string,
+  connection: VMConnection,
+  localPort: number,
+  urlTemplate?: string,
+): Promise<void> {
+  if (agentKey === "t3code") {
+    const keys = await ensureSshKeys();
+    const pairingUrl = await issueT3PairingBrowserUrl(
+      connection.ip,
+      connection.user,
+      getSshKeyOpts(keys),
+      localPort,
+    );
+    if (pairingUrl) {
+      openBrowser(pairingUrl);
+      logT3PairingHandoff(localPort, pairingUrl);
+      return;
+    }
+    if (urlTemplate) {
+      const fallback = rewriteT3RemotePairingUrl(
+        urlTemplate.replace("__PORT__", String(T3_REMOTE_PORT)),
+        localPort,
+      );
+      if (fallback) {
+        openBrowser(fallback);
+        logT3PairingHandoff(localPort, fallback);
+        return;
+      }
+    }
+    logT3PairingHandoff(localPort);
+    return;
+  }
+  if (urlTemplate) {
+    const url = urlTemplate.replace("__PORT__", String(localPort));
+    openBrowser(url);
+  }
 }
 
 /**
@@ -307,6 +353,7 @@ export async function cmdEnterAgent(
 
   // Re-establish SSH tunnel for web dashboard if tunnel metadata was persisted at spawn time
   let tunnelHandle: SshTunnelHandle | undefined;
+  let t3PairingWatcher: { stop: () => void } | undefined;
   const tunnelPort = connection.metadata?.tunnel_remote_port;
   if (tunnelPort && connection.ip !== "sprite-console") {
     // SECURITY: Validate tunnel metadata before use (prevent phishing via tampered history)
@@ -334,9 +381,15 @@ export async function cmdEnterAgent(
         sshKeyOpts: getSshKeyOpts(keys),
       });
       const urlTemplate = connection.metadata?.tunnel_browser_url_template;
-      if (urlTemplate) {
-        const url = urlTemplate.replace("__PORT__", String(tunnelHandle.localPort));
-        openBrowser(url);
+      if (agentKey === "t3code") {
+        t3PairingWatcher = startT3PairingBrowserWatcher({
+          ip: connection.ip,
+          user: connection.user,
+          sshKeyOpts: getSshKeyOpts(keys),
+          localPort: tunnelHandle.localPort,
+        });
+      } else if (urlTemplate) {
+        await openAgentTunnelBrowser(agentKey, connection, tunnelHandle.localPort, urlTemplate);
       }
     });
     if (!tunnelResult.ok) {
@@ -350,7 +403,11 @@ export async function cmdEnterAgent(
 
   // Standard SSH connection with agent launch
   p.log.step(`Entering ${pc.bold(agentName)} on ${pc.bold(connection.ip)}...`);
-  const quotedRemoteCmd = shellQuote(remoteCmd);
+  const tunnelPortExport =
+    tunnelHandle && agentKey === "t3code"
+      ? `export SPAWN_TUNNEL_LOCAL_PORT=${tunnelHandle.localPort}; `
+      : "";
+  const quotedRemoteCmd = shellQuote(`${tunnelPortExport}${remoteCmd}`);
   await runInteractiveCommand(
     "ssh",
     [
@@ -366,11 +423,12 @@ export async function cmdEnterAgent(
   if (tunnelHandle) {
     tunnelHandle.stop();
   }
+  t3PairingWatcher?.stop();
 }
 
 /** Open the web dashboard for a VM by establishing an SSH tunnel and launching the browser.
  *  Blocks until the user presses Enter, then tears down the tunnel. */
-export async function cmdOpenDashboard(connection: VMConnection): Promise<void> {
+export async function cmdOpenDashboard(connection: VMConnection, agentKey?: string): Promise<void> {
   if (connection.cloud === "daytona") {
     const { validateDaytonaConnection } = await import("../daytona/daytona.js");
     const validation = tryCatch(() => validateDaytonaConnection(connection));
@@ -434,6 +492,28 @@ export async function cmdOpenDashboard(connection: VMConnection): Promise<void> 
   }
 
   const handle = tunnelResult.data;
+  const resolvedAgent = agentKey ?? "";
+  if (resolvedAgent === "t3code") {
+    logT3PairingHandoff(handle.localPort);
+    const watcher = startT3PairingBrowserWatcher({
+      ip: connection.ip,
+      user: connection.user,
+      sshKeyOpts: getSshKeyOpts(keys),
+      localPort: handle.localPort,
+    });
+    p.log.success("Waiting for T3 Code — pairing URL will open automatically when the server is ready.");
+    p.log.info("Press Enter to close the dashboard tunnel.");
+    await new Promise<void>((resolve) => {
+      process.stdin.setRawMode?.(false);
+      process.stdin.resume();
+      process.stdin.once("data", () => resolve());
+    });
+    watcher.stop();
+    handle.stop();
+    p.log.step("Dashboard tunnel closed.");
+    return;
+  }
+
   if (urlTemplate) {
     const url = urlTemplate.replace("__PORT__", String(handle.localPort));
     openBrowser(url);

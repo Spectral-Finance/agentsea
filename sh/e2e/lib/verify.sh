@@ -880,6 +880,30 @@ verify_junie() {
     failures=$((failures + 1))
   fi
 
+  log_step "Checking junie custom LLM profile (~/.junie/models/thegrid.json)..."
+  if cloud_exec "${app}" "test -f ~/.junie/models/thegrid.json && grep -q '127.0.0.1:4143/v1/chat/completions' ~/.junie/models/thegrid.json && grep -q fasterModel ~/.junie/models/thegrid.json" >/dev/null 2>&1; then
+    log_ok "Junie Grid model profile points at local LiteLLM chat/completions URL"
+  else
+    log_err "Missing ~/.junie/models/thegrid.json, local chat/completions URL, or fasterModel"
+    failures=$((failures + 1))
+  fi
+
+  log_step "Checking junie LiteLLM config (~/.junie/litellm.yaml)..."
+  if cloud_exec "${app}" "test -f ~/.junie/litellm.yaml && grep -q api.thegrid.ai ~/.junie/litellm.yaml" >/dev/null 2>&1; then
+    log_ok "Junie litellm.yaml present with upstream api.thegrid.ai"
+  else
+    log_err "Missing ~/.junie/litellm.yaml or upstream api.thegrid.ai"
+    failures=$((failures + 1))
+  fi
+
+  log_step "Checking junie config (~/.junie/config.json)..."
+  if cloud_exec "${app}" "test -f ~/.junie/config.json && grep -q 'custom:thegrid' ~/.junie/config.json" >/dev/null 2>&1; then
+    log_ok "Junie config.json selects custom:thegrid"
+  else
+    log_err "Missing ~/.junie/config.json or custom:thegrid model"
+    failures=$((failures + 1))
+  fi
+
   return "${failures}"
 }
 
@@ -948,6 +972,14 @@ verify_pi() {
     failures=$((failures + 1))
   fi
 
+  log_step "Checking pi The Grid provider config..."
+  if cloud_exec "${app}" "test -f ~/.pi/agent/models.json && test -f ~/.pi/agent/settings.json && grep -q thegrid ~/.pi/agent/models.json && grep -q THEGRID_API_KEY ~/.pi/agent/models.json && grep -q defaultProvider ~/.pi/agent/settings.json" >/dev/null 2>&1; then
+    log_ok "Pi models.json + settings.json configured for The Grid"
+  else
+    log_err "Pi missing ~/.pi/agent/models.json or settings.json (The Grid provider)"
+    failures=$((failures + 1))
+  fi
+
   return "${failures}"
 }
 
@@ -963,11 +995,43 @@ verify_t3code() {
     failures=$((failures + 1))
   fi
 
+  log_step "Checking codex binary (t3code Codex provider)..."
+  if cloud_exec "${app}" "PATH=\$HOME/.npm-global/bin:\$HOME/.bun/bin:\$HOME/.local/bin:/usr/local/bin:\$PATH command -v codex" >/dev/null 2>&1; then
+    log_ok "codex binary found"
+  else
+    log_err "codex binary not found"
+    failures=$((failures + 1))
+  fi
+
   log_step "Checking t3code env (The Grid API / OpenAI-compat in .spawnrc)..."
   if cloud_exec "${app}" "grep -q THEGRID_API_KEY ~/.spawnrc && grep -q thegrid.ai ~/.spawnrc" >/dev/null 2>&1; then
     log_ok "The Grid proxy vars present in .spawnrc"
   else
     log_err "Expected THEGRID_API_KEY / thegrid.ai not found in .spawnrc"
+    failures=$((failures + 1))
+  fi
+
+  log_step "Checking t3code Codex config (~/.codex/config.toml)..."
+  if cloud_exec "${app}" "test -f ~/.codex/config.toml && grep -q thegrid ~/.codex/config.toml" >/dev/null 2>&1; then
+    log_ok "~/.codex/config.toml configured for The Grid"
+  else
+    log_err "~/.codex/config.toml missing or not configured for The Grid"
+    failures=$((failures + 1))
+  fi
+
+  log_step "Checking t3code Codex LiteLLM bridge..."
+  if cloud_exec "${app}" "grep -q use_chat_completions_api ~/.codex/litellm.yaml && grep -q codex_litellm_callbacks ~/.codex/litellm.yaml && grep -q reasoning_effort ~/.codex/codex_litellm_callbacks.py" >/dev/null 2>&1; then
+    log_ok "~/.codex/litellm.yaml enables responses→chat bridge with reasoning strip"
+  else
+    log_err "~/.codex/litellm.yaml missing bridge config or reasoning strip callback"
+    failures=$((failures + 1))
+  fi
+
+  log_step "Checking t3code settings (~/.t3/userdata/settings.json)..."
+  if cloud_exec "${app}" "test -f ~/.t3/userdata/settings.json && grep -q agent-standard ~/.t3/userdata/settings.json" >/dev/null 2>&1; then
+    log_ok "T3 settings prefer agent-standard on codex provider"
+  else
+    log_err "Missing ~/.t3/userdata/settings.json or agent-standard default"
     failures=$((failures + 1))
   fi
 

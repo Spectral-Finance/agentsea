@@ -701,7 +701,7 @@ export async function handleRecordAction(
   }
 
   if (action === "dashboard") {
-    const dashResult = await asyncTryCatch(() => cmdOpenDashboard(conn));
+    const dashResult = await asyncTryCatch(() => cmdOpenDashboard(conn, selected.agent));
     if (!dashResult.ok) {
       p.log.error(`Dashboard failed: ${getErrorMessage(dashResult.error)}`);
     }

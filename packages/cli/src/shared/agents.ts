@@ -65,6 +65,11 @@ export interface TunnelConfig {
    * form if the OS/browser drops ?token= / #token= from the opened URL (common on WSL).
    */
   logGatewayToken?: string;
+  /**
+   * T3 Code: never open the bare tunnel root — browsers reuse localhost cookies from prior
+   * spawns and hit "Invalid session token signature". Pair via /pair#token= instead.
+   */
+  requiresPairing?: boolean;
 }
 
 // ─── Agent Optional Steps (static metadata — no CloudRunner needed) ─────────

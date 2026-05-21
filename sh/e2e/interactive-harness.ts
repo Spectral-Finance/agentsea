@@ -11,7 +11,8 @@
 //   Cloud credentials   — HCLOUD_TOKEN, DIGITALOCEAN_ACCESS_TOKEN, AWS_ACCESS_KEY_ID, etc.
 //
 // Optional:
-//   GRID_OPENAI_BASE_URL — Default https://api.thegrid.ai/v1
+//   THEGRID_API_URL      — Override inference API base (default https://api.thegrid.ai/v1)
+//   GRID_OPENAI_BASE_URL — Alias for THEGRID_API_URL (legacy)
 //   INTERACTIVE_DRIVER_MODEL_ID / MODEL_ID — Chat model id (default agent-standard)
 //
 // Outputs JSON to stdout: { success: boolean, duration: number, transcript: string, uxIssues?: UxIssue[] }
@@ -20,8 +21,10 @@ const IDLE_MS = 2000; // Wait 2s of silence before asking AI
 const SESSION_TIMEOUT_MS = 20 * 60 * 1000; // 20 minute overall timeout (provision takes 3-4 min + onboarding)
 
 const GRID_OPENAI_BASE = (
-  process.env.GRID_OPENAI_BASE_URL ?? "https://api.thegrid.ai/v1"
-).replace(/\/$/, "");
+  process.env.THEGRID_API_URL ??
+  process.env.GRID_OPENAI_BASE_URL ??
+  "https://api.thegrid.ai/v1"
+).replace(/\/+$/, "");
 const AI_MODEL = (
   process.env.INTERACTIVE_DRIVER_MODEL_ID ??
   process.env.MODEL_ID ??

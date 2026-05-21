@@ -26,7 +26,8 @@ import { offerGithubAuth, setupAutoUpdate, setupSecurityScan, wrapSshCall } from
 import { tryTarballInstall } from "./agent-tarball.js";
 import { generateEnvConfig } from "./agents.js";
 import { acquireHeadlessProvisionLock } from "./headless-lock.js";
-import { fetchGridModelIds } from "./grid-models.js";
+import { fetchGridModelCatalog } from "./grid-models.js";
+import { ensureGridModelHasCredits } from "./grid-credits-guidance.js";
 import { getOrPromptApiKey } from "./oauth.js";
 import { parseJsonWith } from "./parse.js";
 import { provisionPhaseIndex } from "./provision-phases.js";
@@ -35,6 +36,7 @@ import { asyncTryCatch, asyncTryCatchIf, isOperationalError, tryCatch } from "./
 import { isWindows } from "./shell.js";
 import { injectSpawnSkill } from "./spawn-skill.js";
 import { sleep, startSshTunnel } from "./ssh.js";
+import { logT3PairingHandoff, startT3PairingBrowserWatcher } from "./t3-config.js";
 import { buildCloudOrchestratorForResume } from "./resume-cloud-factory.js";
 import { ensureSshKeys, getSshKeyOpts } from "./ssh-keys.js";
 import { GRID_SPAWN_CLI } from "./cli-invocation.js";
@@ -489,18 +491,34 @@ async function resolveProvisionModelId(agentName: string, agent: AgentConfig, ap
 
   if (shouldOfferGridModelPicker(agent, preference)) {
     logAlwaysStep("Fetching models from The Grid…");
-    const catalogue = await fetchGridModelIds(apiKey);
-    if (catalogue.length > 0) {
+    const catalog = await fetchGridModelCatalog(apiKey);
+    if (catalog.authFailed) {
+      logWarn("The Grid API key was rejected — check THEGRID_API_KEY (and THEGRID_API_URL if set).");
+    }
+    if (catalog.entries.length > 0) {
+      const catalogueIds = catalog.entries.map((entry) => entry.id);
       const fallback =
-        agent.modelDefault && catalogue.includes(agent.modelDefault) ? agent.modelDefault : catalogue[0]!;
+        agent.modelDefault && catalogueIds.includes(agent.modelDefault) ? agent.modelDefault : catalogueIds[0]!;
       const suggested =
-        rawModelId && catalogue.includes(rawModelId) ? rawModelId : fallback;
-      const picked = await promptGridCatalogModelId(catalogue, suggested);
+        rawModelId && catalogueIds.includes(rawModelId) ? rawModelId : fallback;
+      const picked = await promptGridCatalogModelId(catalog.entries, suggested);
       if (picked && validateModelId(picked)) {
+        const entry = catalog.entries.find((row) => row.id === picked);
+        if (!entry?.funded) {
+          const funded = await ensureGridModelHasCredits(apiKey, picked);
+          if (!funded) {
+            logWarn("Provisioning cancelled — add Grid credits for the selected model and try again.");
+            throw new Error("Grid model has no consumption balance");
+          }
+        }
         rawModelId = picked;
       }
-    } else {
+    } else if (catalog.publicCatalogFailed && catalog.authFailed) {
       logWarn("Could not load model catalogue from The Grid — continuing with CLI defaults.");
+    } else if (catalog.publicCatalogFailed) {
+      logWarn("Could not load the public model catalogue — continuing with CLI defaults.");
+    } else {
+      logWarn("No Grid models are listed for this environment — continuing with CLI defaults.");
     }
   }
 
@@ -1186,6 +1204,7 @@ export async function runPostInstallPhase(
 
   // Web dashboard access
   let tunnelHandle: SshTunnelHandle | undefined;
+  let t3PairingWatcher: { stop: () => void } | undefined;
   if (agent.tunnel) {
     const tunnelCfg = agent.tunnel; // capture for closure (TS can't narrow across async boundaries)
     const templateUrl = tunnelCfg.browserUrl?.(0);
@@ -1208,6 +1227,15 @@ export async function runPostInstallPhase(
           logDashboardAuthHandoff(url, tunnelCfg.logGatewayToken);
           openBrowser(url);
           }
+        } else if (tunnelCfg.requiresPairing) {
+          logAlwaysStep("T3 Code — browser pairing");
+          logT3PairingHandoff(tunnelHandle.localPort);
+          t3PairingWatcher = startT3PairingBrowserWatcher({
+            ip: conn.host,
+            user: conn.user,
+            sshKeyOpts: getSshKeyOpts(keys),
+            localPort: tunnelHandle.localPort,
+          });
         }
       });
       if (!tunnelResult.ok) {
@@ -1234,6 +1262,9 @@ export async function runPostInstallPhase(
           logDashboardAuthHandoff(url, tunnelCfg.logGatewayToken);
           openBrowser(url);
         }
+      } else if (tunnelCfg.requiresPairing) {
+        logAlwaysStep("T3 Code — browser pairing");
+        logT3PairingHandoff(agent.tunnel.remotePort);
       }
     }
 
@@ -1244,6 +1275,9 @@ export async function runPostInstallPhase(
       tunnelMeta.tunnel_browser_url_template = templateUrl
         .replace("127.0.0.1:0", "127.0.0.1:__PORT__")
         .replace("localhost:0", "localhost:__PORT__");
+    }
+    if (tunnelHandle) {
+      tunnelMeta.tunnel_local_port = String(tunnelHandle.localPort);
     }
     saveMetadata(tunnelMeta, spawnId);
   }
@@ -1348,7 +1382,12 @@ export async function runPostInstallPhase(
 
   prepareStdinForHandoff();
 
-  const sessionCmd = isLocalRuntime(cloud) ? launchCmd : wrapWithRestartLoop(launchCmd);
+  const tunnelPortExport = tunnelHandle
+    ? `export SPAWN_TUNNEL_LOCAL_PORT=${tunnelHandle.localPort}; `
+    : "";
+  const sessionCmd = isLocalRuntime(cloud)
+    ? `${tunnelPortExport}${launchCmd}`
+    : wrapWithRestartLoop(`${tunnelPortExport}${launchCmd}`);
 
   // Auto-reconnect on connection drops. Ctrl+C (exit 0 or 130) exits immediately.
   // Only applies to remote clouds — local sessions don't have connection drops.
@@ -1380,6 +1419,7 @@ export async function runPostInstallPhase(
   if (tunnelHandle) {
     tunnelHandle.stop();
   }
+  t3PairingWatcher?.stop();
 
   // Pull child's spawn history back to the parent for `spawn tree`.
   // Fire-and-forget — never delay exit for a convenience feature.

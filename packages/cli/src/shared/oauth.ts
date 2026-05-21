@@ -10,6 +10,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { getErrorMessage, isString } from "@grid-spawn/sdk";
 import { parseJsonObj } from "./parse.js";
+import { gridInferenceModelsUrl } from "./grid-api.js";
 import { getSpawnCloudConfigPath } from "./paths.js";
 import { asyncTryCatchIf, isFileError, isNetworkError, tryCatch } from "./result.js";
 import { logDebug, logError, logInfo, logWarn, logAlwaysInfo, prompt, retryOrQuit } from "./ui.js";
@@ -34,7 +35,7 @@ export async function verifyTheGridApiKey(apiKey: string): Promise<boolean> {
   const result = await asyncTryCatchIf(isNetworkError, async () => {
     // Use the OpenAI-compatible models list — it returns 200 when the key is valid.
     // (`/auth/key` has been observed to 404 on production; models is the stable probe.)
-    const resp = await fetch("https://api.thegrid.ai/v1/models", {
+    const resp = await fetch(gridInferenceModelsUrl(), {
       headers: {
         Authorization: `Bearer ${apiKey}`,
       },

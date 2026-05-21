@@ -150,6 +150,11 @@
   }
 }
 
+.agentGrid > li {
+  display: flex;
+  min-height: 0;
+}
+
 .agentCard {
   box-sizing: border-box;
   height: 100%;
@@ -171,8 +176,21 @@
 }
 
 .agentCard--clickable {
+  appearance: none;
+  margin: 0;
   text-decoration: none;
   color: inherit;
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+  text-align: left;
+  font: inherit;
+  @include flex(stretch, flex-start, column);
+
+  &:hover {
+    border-color: color-mix(in srgb, rgb(var(--highlight)) 55%, c(stroke-2));
+    box-shadow: shadow(s);
+  }
 
   &:focus-visible {
     outline: 2px solid rgb(var(--highlight));
@@ -180,18 +198,22 @@
   }
 }
 
+.agentCard--selected {
+  border-color: color-mix(in srgb, rgb(var(--highlight)) 70%, c(stroke-2));
+  box-shadow: 0 0 0 1px color-mix(in srgb, rgb(var(--highlight)) 35%, transparent);
+}
+
 .agentCard--hot {
-  border-color: color-mix(in srgb, rgb(var(--highlight)) 45%, c(stroke-2));
   background: color-mix(in srgb, c(base-2) 88%, c(base-1));
 }
 
-.agentCard--disabled:not(.agentCard--hot) {
+.agentCard--disabled {
   opacity: 0.42;
   filter: saturate(0.35);
   cursor: not-allowed;
 }
 
-.agentCard--disabled:not(.agentCard--hot):hover {
+.agentCard--disabled:hover {
   border-color: c(stroke-2);
   box-shadow: none;
 }
@@ -298,6 +320,162 @@
   color: c(text-1);
   text-align: right;
   flex-shrink: 0;
+}
+
+/* ─── Cloud provider pick (Step 2) ─── */
+.cloudPickLead {
+  @include text(text-m);
+  color: c(text-2);
+  margin: 0 0 pad(6);
+  line-height: 1.55;
+}
+
+.cloudGrid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: pad(4);
+  grid-template-columns: 1fr;
+
+  @media (min-width: 640px) {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.cloudGrid > li {
+  display: flex;
+  min-height: 0;
+}
+
+.cloudCard {
+  box-sizing: border-box;
+  height: 100%;
+  @include flex(stretch, flex-start, column);
+  @include padding(4, 5);
+  border-radius: br(m);
+  border: 1px solid c(stroke-2);
+  background: c(base-1);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+  @include text(text-s);
+  min-height: 11rem;
+
+  &:hover {
+    border-color: c(stroke-1);
+    box-shadow: shadow(s);
+  }
+}
+
+.cloudCard--clickable {
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  text-decoration: none;
+  @include flex(stretch, flex-start, column);
+
+  &:hover {
+    border-color: color-mix(in srgb, rgb(var(--highlight)) 55%, c(stroke-2));
+    box-shadow: shadow(s);
+  }
+
+  &:focus-visible {
+    outline: 2px solid rgb(var(--highlight));
+    outline-offset: 2px;
+  }
+}
+
+.cloudCard--disabled {
+  opacity: 0.42;
+  filter: saturate(0.35);
+  cursor: not-allowed;
+
+  &:hover {
+    border-color: c(stroke-2);
+    box-shadow: none;
+  }
+}
+
+.cloudCard__top {
+  @include flex(flex-start, flex-start);
+  gap: pad(3);
+  margin-bottom: pad(3);
+}
+
+.cloudCard__logo {
+  flex-shrink: 0;
+  display: block;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: br(s);
+  overflow: hidden;
+  border: 1px solid c(stroke-2);
+  background: c(base-2);
+}
+
+.cloudCard__logoSvg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.cloudCard__logoSvg > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.cloudCard__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.cloudCard__head {
+  flex: 1;
+  min-width: 0;
+  @include flex(flex-start, flex-start, column);
+  gap: pad(2);
+}
+
+.cloudCard__name {
+  @include font(600);
+  @include text(text-m);
+  color: c(text-1);
+  margin: 0;
+  line-height: 1.25;
+}
+
+.cloudCard__badge {
+  display: inline-block;
+  @include text(text-xs);
+  @include font(600);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: c(text-3);
+  background: c(base-2);
+  border: 1px solid c(stroke-2);
+  border-radius: br(s);
+  padding: pad(1) pad(2);
+}
+
+.cloudCard__desc {
+  flex: 1 1 auto;
+  color: c(text-2);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.cloudCard__reason {
+  margin: pad(2) 0 0;
+  @include text(text-xs);
+  color: c(text-3);
+  line-height: 1.4;
 }
 
 /* ─── Under the hood steps ─── */
