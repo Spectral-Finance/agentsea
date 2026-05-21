@@ -9,6 +9,12 @@ set -eo pipefail
 # ---------------------------------------------------------------------------
 INPUT_TEST_PROMPT="Reply with exactly the text SPAWN_E2E_OK and nothing else."
 INPUT_TEST_MARKER="SPAWN_E2E_OK"
+# Transcript logging controls (enabled by default so runs are auditable).
+# INPUT_TEST_LOG_TRANSCRIPT=0 disables request/response transcript output.
+# INPUT_TEST_LOG_MAX_LINES=0 logs the full response; N logs only the first N lines.
+INPUT_TEST_LOG_TRANSCRIPT="${INPUT_TEST_LOG_TRANSCRIPT:-1}"
+INPUT_TEST_LOG_MAX_LINES="${INPUT_TEST_LOG_MAX_LINES:-0}"
+case "${INPUT_TEST_LOG_MAX_LINES}" in ''|*[!0-9]*) INPUT_TEST_LOG_MAX_LINES=0 ;; esac
 
 # ---------------------------------------------------------------------------
 # _validate_timeout
@@ -81,6 +87,40 @@ _stage_timeout_remotely() {
 }
 
 # ---------------------------------------------------------------------------
+# Transcript logging helpers
+#
+# Emit the exact prompt and agent raw response so test runs are auditable.
+# ---------------------------------------------------------------------------
+_log_input_request() {
+  local agent="$1"
+  local prompt="$2"
+  if [ "${INPUT_TEST_LOG_TRANSCRIPT:-1}" != "1" ]; then
+    return 0
+  fi
+  log_info "${agent} input request (exact prompt):"
+  printf -- '----- BEGIN INPUT REQUEST (%s) -----\n' "${agent}" >&2
+  printf '%s\n' "${prompt}" >&2
+  printf -- '----- END INPUT REQUEST (%s) -----\n' "${agent}" >&2
+}
+
+_log_input_response() {
+  local agent="$1"
+  local response="$2"
+  if [ "${INPUT_TEST_LOG_TRANSCRIPT:-1}" != "1" ]; then
+    return 0
+  fi
+  log_info "${agent} raw response transcript:"
+  printf -- '----- BEGIN INPUT RESPONSE (%s) -----\n' "${agent}" >&2
+  if [ "${INPUT_TEST_LOG_MAX_LINES:-0}" -gt 0 ]; then
+    printf '%s\n' "${response}" | sed -n "1,${INPUT_TEST_LOG_MAX_LINES}p" >&2
+    printf -- '----- RESPONSE TRUNCATED TO %s LINES (%s) -----\n' "${INPUT_TEST_LOG_MAX_LINES}" "${agent}" >&2
+  else
+    printf '%s\n' "${response}" >&2
+  fi
+  printf -- '----- END INPUT RESPONSE (%s) -----\n' "${agent}" >&2
+}
+
+# ---------------------------------------------------------------------------
 # Per-agent input test functions
 #
 # Each function:
@@ -103,6 +143,7 @@ input_test_claude() {
   _validate_base64 "${encoded_prompt}" || return 1
   _stage_prompt_remotely "${app}" "${encoded_prompt}"
   _stage_timeout_remotely "${app}" "${INPUT_TEST_TIMEOUT}"
+  _log_input_request "claude" "${INPUT_TEST_PROMPT}"
 
   local output
   # claude -p (--print) reads the prompt from stdin.
@@ -118,6 +159,7 @@ input_test_claude() {
     rm -rf /tmp/e2e-test && mkdir -p /tmp/e2e-test && cd /tmp/e2e-test && git init -q; \
     PROMPT=\$(cat /tmp/.e2e-prompt | base64 -d); \
     timeout \"\$_TIMEOUT\" claude -p --dangerously-skip-permissions --no-session-persistence \"\$PROMPT\"" 2>&1) || true
+  _log_input_response "claude" "${output}"
 
   if printf '%s' "${output}" | grep -qx "${INPUT_TEST_MARKER}"; then
     log_ok "claude input test — marker found in response"
@@ -130,10 +172,64 @@ input_test_claude() {
   fi
 }
 
+_codex_ensure_proxy() {
+  local app="$1"
+  log_step "Ensuring Codex LiteLLM proxy is running on :4141..."
+  cloud_exec "${app}" "source ~/.spawnrc 2>/dev/null; \
+    export PATH=\$HOME/.local/bin:\$HOME/.bun/bin:\$HOME/.litellm-venv/bin:/usr/local/bin:\$PATH; \
+    export THEGRID_API_KEY; \
+    _codex_proxy_up() { curl -sf 'http://127.0.0.1:4141/health/liveliness' >/dev/null 2>&1; }; \
+    if _codex_proxy_up; then echo 'Codex proxy already running'; exit 0; fi; \
+    test -s \"\$HOME/.codex/litellm.yaml\" || { echo 'Missing ~/.codex/litellm.yaml'; exit 1; }; \
+    _sudo=\"\"; [ \"\$(id -u)\" != \"0\" ] && _sudo=\"sudo\"; \
+    if command -v apt-get >/dev/null 2>&1; then \
+      \$_sudo apt-get update -qq; \
+      _py_ver=\$(python3 -c \"import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')\" 2>/dev/null || echo 3); \
+      if apt-cache show \"python\${_py_ver}-venv\" >/dev/null 2>&1; then \
+        \$_sudo apt-get install -y \"python\${_py_ver}-venv\" || exit 1; \
+      elif apt-cache show python3-venv >/dev/null 2>&1; then \
+        \$_sudo apt-get install -y python3-venv || exit 1; \
+      else \
+        echo 'No python3-venv package available via apt' >&2; exit 1; \
+      fi; \
+    fi; \
+    if [ -d \"\$HOME/.litellm-venv\" ] && [ ! -x \"\$HOME/.litellm-venv/bin/litellm\" ]; then rm -rf \"\$HOME/.litellm-venv\"; fi; \
+    if [ ! -x \"\$HOME/.litellm-venv/bin/litellm\" ]; then \
+      rm -rf \"\$HOME/.litellm-venv\"; \
+      python3 -m venv \"\$HOME/.litellm-venv\" || exit 1; \
+      \"\$HOME/.litellm-venv/bin/pip\" install -q --upgrade pip; \
+    fi; \
+    \"\$HOME/.litellm-venv/bin/pip\" install -q --upgrade 'litellm[proxy]>=1.85.0'; \
+    mkdir -p \"\$HOME/.local/bin\"; \
+    ln -sf \"\$HOME/.litellm-venv/bin/litellm\" \"\$HOME/.local/bin/litellm\"; \
+    if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ] && [ -x /usr/local/bin/codex-litellm-wrapper ]; then \
+      \$_sudo systemctl restart codex-litellm; \
+    elif [ -x /usr/local/bin/codex-litellm-wrapper ]; then \
+      pkill -f '[l]itellm.*4141' 2>/dev/null || true; sleep 1; \
+      if command -v setsid >/dev/null 2>&1; then \
+        setsid /usr/local/bin/codex-litellm-wrapper >> /tmp/codex-litellm.log 2>&1 < /dev/null & \
+      else \
+        nohup /usr/local/bin/codex-litellm-wrapper >> /tmp/codex-litellm.log 2>&1 < /dev/null & \
+      fi; \
+    else \
+      echo 'codex-litellm-wrapper missing — spawn via grid-spawn codex first' >&2; exit 1; \
+    fi; \
+    elapsed=0; while [ \$elapsed -lt 120 ]; do \
+      if _codex_proxy_up; then echo 'Codex proxy started'; exit 0; fi; \
+      sleep 1; elapsed=\$((elapsed + 1)); \
+    done; \
+    echo 'Codex proxy failed to start after 120s'; tail -40 /tmp/codex-litellm.log 2>/dev/null; exit 1" >/dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    log_err "Codex LiteLLM proxy failed to start"
+    return 1
+  fi
+}
+
 input_test_codex() {
   local app="$1"
 
   _validate_timeout || return 1
+  _codex_ensure_proxy "${app}" || return 1
 
   log_step "Running input test for codex..."
   # Base64-encode the prompt and stage it to a remote temp file.
@@ -142,19 +238,21 @@ input_test_codex() {
   _validate_base64 "${encoded_prompt}" || return 1
   _stage_prompt_remotely "${app}" "${encoded_prompt}"
   _stage_timeout_remotely "${app}" "${INPUT_TEST_TIMEOUT}"
+  _log_input_request "codex" "${INPUT_TEST_PROMPT}"
 
   local output
-  # codex exec --full-auto: non-interactive subcommand for v0.116.0+
-  # The prompt and timeout are read from staged temp files — no interpolation in this command.
+  # codex exec: CI-style run (no TUI); stdin must not be a half-open pipe — use < /dev/null.
   output=$(cloud_exec "${app}" "\
     source ~/.spawnrc 2>/dev/null; \
     export PATH=\$HOME/.npm-global/bin:\$HOME/.local/bin:\$HOME/.bun/bin:\$PATH; \
     _TIMEOUT=\$(cat /tmp/.e2e-timeout); \
+    cat /tmp/.e2e-prompt | base64 -d > /tmp/.e2e-plain-prompt; \
     rm -rf /tmp/e2e-test && mkdir -p /tmp/e2e-test && cd /tmp/e2e-test && git init -q; \
-    PROMPT=\$(cat /tmp/.e2e-prompt | base64 -d); \
-    timeout \"\$_TIMEOUT\" codex exec --full-auto \"\$PROMPT\"" 2>&1) || true
+    PROMPT=\$(cat /tmp/.e2e-plain-prompt); \
+    timeout \"\$_TIMEOUT\" codex exec --sandbox danger-full-access --ask-for-approval=never \"\$PROMPT\" < /dev/null" 2>&1) || true
+  _log_input_response "codex" "${output}"
 
-  if printf '%s' "${output}" | grep -qx "${INPUT_TEST_MARKER}"; then
+  if printf '%s' "${output}" | tr -d '\r' | grep -qFx "${INPUT_TEST_MARKER}"; then
     log_ok "codex input test — marker found in response"
     return 0
   else
@@ -229,6 +327,7 @@ input_test_openclaw() {
   _validate_base64 "${encoded_prompt}" || return 1
   _stage_prompt_remotely "${app}" "${encoded_prompt}"
   _stage_timeout_remotely "${app}" "${INPUT_TEST_TIMEOUT}"
+  _log_input_request "openclaw" "${INPUT_TEST_PROMPT}"
 
   while [ "${attempt}" -lt "${max_attempts}" ]; do
     attempt=$((attempt + 1))
@@ -256,6 +355,7 @@ input_test_openclaw() {
       rm -rf /tmp/e2e-test && mkdir -p /tmp/e2e-test && cd /tmp/e2e-test && git init -q; \
       PROMPT=\$(cat /tmp/.e2e-prompt | base64 -d); \
       timeout \"\$_TIMEOUT\" openclaw agent --message \"\$PROMPT\" --session-id \"e2e-test-\$_ATTEMPT\" --timeout 60" 2>&1) || true
+    _log_input_response "openclaw" "${output}"
 
     if printf '%s' "${output}" | grep -qx "${INPUT_TEST_MARKER}"; then
       log_ok "openclaw input test — marker found in response"
@@ -277,13 +377,83 @@ input_test_openclaw() {
 }
 
 input_test_opencode() {
-  log_warn "opencode is TUI-only — skipping input test"
-  return 0
+  local app="$1"
+
+  _validate_timeout || return 1
+
+  log_step "Running input test for opencode (headless --prompt via The Grid)..."
+  # Same staging pattern as codex/claude: no prompt bytes in the ssh command line.
+  local encoded_prompt
+  encoded_prompt=$(printf '%s' "${INPUT_TEST_PROMPT}" | base64 -w 0 2>/dev/null || printf '%s' "${INPUT_TEST_PROMPT}" | base64 | tr -d '\n')
+  _validate_base64 "${encoded_prompt}" || return 1
+  _stage_prompt_remotely "${app}" "${encoded_prompt}"
+  _stage_timeout_remotely "${app}" "${INPUT_TEST_TIMEOUT}"
+  _log_input_request "opencode" "${INPUT_TEST_PROMPT}"
+
+  local output
+  # Align with packages/cli promptCmd: source spawnrc + zshrc, PATH includes ~/.opencode/bin.
+  # Non-interactive stdin like codex (half-open pipe can confuse CLIs).
+  output=$(cloud_exec "${app}" "\
+    source ~/.spawnrc 2>/dev/null; \
+    source ~/.zshrc 2>/dev/null; \
+    export PATH=\$HOME/.opencode/bin:\$HOME/.local/bin:\$HOME/.bun/bin:\$PATH; \
+    _TIMEOUT=\$(cat /tmp/.e2e-timeout); \
+    rm -rf /tmp/e2e-test && mkdir -p /tmp/e2e-test && cd /tmp/e2e-test && git init -q; \
+    PROMPT=\$(cat /tmp/.e2e-prompt | base64 -d); \
+    timeout \"\$_TIMEOUT\" opencode --prompt \"\$PROMPT\" < /dev/null" 2>&1) || true
+  _log_input_response "opencode" "${output}"
+
+  if printf '%s' "${output}" | tr -d '\r' | grep -qFx "${INPUT_TEST_MARKER}"; then
+    log_ok "opencode input test — marker found in response"
+    return 0
+  fi
+  if printf '%s' "${output}" | tr -d '\r' | grep -qF "${INPUT_TEST_MARKER}"; then
+    log_ok "opencode input test — marker found in response (non-exact line)"
+    return 0
+  fi
+  log_err "opencode input test — marker '${INPUT_TEST_MARKER}' not found in response"
+  log_err "Response (last 25 lines):"
+  printf '%s\n' "${output}" | tail -25 >&2
+  return 1
 }
 
 input_test_kilocode() {
-  log_warn "kilocode is TUI-only — skipping input test"
-  return 0
+  local app="$1"
+
+  _validate_timeout || return 1
+
+  log_step "Running input test for kilocode (headless --prompt via The Grid)..."
+  local encoded_prompt
+  encoded_prompt=$(printf '%s' "${INPUT_TEST_PROMPT}" | base64 -w 0 2>/dev/null || printf '%s' "${INPUT_TEST_PROMPT}" | base64 | tr -d '\n')
+  _validate_base64 "${encoded_prompt}" || return 1
+  _stage_prompt_remotely "${app}" "${encoded_prompt}"
+  _stage_timeout_remotely "${app}" "${INPUT_TEST_TIMEOUT}"
+  _log_input_request "kilocode" "${INPUT_TEST_PROMPT}"
+
+  local output
+  # Align with packages/cli promptCmd for kilocode and keep stdin non-interactive.
+  output=$(cloud_exec "${app}" "\
+    source ~/.spawnrc 2>/dev/null; \
+    source ~/.zshrc 2>/dev/null; \
+    export PATH=\$HOME/.npm-global/bin:\$HOME/.local/bin:\$HOME/.bun/bin:\$PATH; \
+    _TIMEOUT=\$(cat /tmp/.e2e-timeout); \
+    rm -rf /tmp/e2e-test && mkdir -p /tmp/e2e-test && cd /tmp/e2e-test && git init -q; \
+    PROMPT=\$(cat /tmp/.e2e-prompt | base64 -d); \
+    timeout \"\$_TIMEOUT\" kilocode --prompt \"\$PROMPT\" < /dev/null" 2>&1) || true
+  _log_input_response "kilocode" "${output}"
+
+  if printf '%s' "${output}" | tr -d '\r' | grep -qFx "${INPUT_TEST_MARKER}"; then
+    log_ok "kilocode input test — marker found in response"
+    return 0
+  fi
+  if printf '%s' "${output}" | tr -d '\r' | grep -qF "${INPUT_TEST_MARKER}"; then
+    log_ok "kilocode input test — marker found in response (non-exact line)"
+    return 0
+  fi
+  log_err "kilocode input test — marker '${INPUT_TEST_MARKER}' not found in response"
+  log_err "Response (last 25 lines):"
+  printf '%s\n' "${output}" | tail -25 >&2
+  return 1
 }
 
 input_test_hermes() {
@@ -303,6 +473,11 @@ input_test_cursor() {
 
 input_test_pi() {
   log_warn "pi is TUI-only — skipping input test"
+  return 0
+}
+
+input_test_t3code() {
+  log_warn "t3code is a web GUI (t3) — skipping headless input test"
   return 0
 }
 
@@ -328,12 +503,13 @@ run_input_test() {
     claude)    input_test_claude "${app}"    ;;
     codex)     input_test_codex "${app}"     ;;
     openclaw)  input_test_openclaw "${app}"  ;;
-    opencode)  input_test_opencode          ;;
-    kilocode)  input_test_kilocode          ;;
+    opencode)  input_test_opencode "${app}" ;;
+    kilocode)  input_test_kilocode "${app}" ;;
     hermes)    input_test_hermes            ;;
     junie)     input_test_junie            ;;
     cursor)    input_test_cursor           ;;
     pi)        input_test_pi              ;;
+    t3code)    input_test_t3code          ;;
     *)
       log_err "Unknown agent for input test: ${agent}"
       return 1
@@ -561,12 +737,23 @@ verify_codex() {
     failures=$((failures + 1))
   fi
 
+  log_step "Checking codex LiteLLM bridge config..."
+  if cloud_exec "${app}" "grep -q use_chat_completions_api ~/.codex/litellm.yaml && grep -q 'drop_params: true' ~/.codex/litellm.yaml && grep -q codex_litellm_callbacks ~/.codex/litellm.yaml && test -f ~/.codex/codex_litellm_callbacks.py" >/dev/null 2>&1; then
+    log_ok "~/.codex/litellm.yaml enables responses→chat bridge with empty-tools callback"
+  else
+    log_err "~/.codex/litellm.yaml missing bridge config or codex_litellm_callbacks.py"
+    failures=$((failures + 1))
+  fi
+
   return "${failures}"
 }
 
 verify_opencode() {
   local app="$1"
   local failures=0
+
+  # Grid-spawn does not upload a separate OpenCode provider file (unlike ~/.codex/config.toml).
+  # OpenCode picks up THEGRID_API_KEY from ~/.spawnrc; optional on-disk config may appear after first run.
 
   # Binary check
   log_step "Checking opencode binary..."
@@ -577,13 +764,25 @@ verify_opencode() {
     failures=$((failures + 1))
   fi
 
-  # Env check
+  # Env check — required for Grid-backed completions
   log_step "Checking opencode env (THEGRID_API_KEY)..."
   if cloud_exec "${app}" "grep -q THEGRID_API_KEY ~/.spawnrc" >/dev/null 2>&1; then
     log_ok "THEGRID_API_KEY present in .spawnrc"
   else
     log_err "THEGRID_API_KEY not found in .spawnrc"
     failures=$((failures + 1))
+  fi
+
+  # If OpenCode has written config, it should reference The Grid (best-effort; optional).
+  log_step "Checking optional ~/.config/opencode for thegrid.ai..."
+  if cloud_exec "${app}" "[ ! -d \"\$HOME/.config/opencode\" ]" >/dev/null 2>&1; then
+    log_info "No ~/.config/opencode yet — relying on .spawnrc THEGRID_API_KEY only"
+  else
+    if cloud_exec "${app}" "grep -rq thegrid\\.ai \"\$HOME/.config/opencode\" 2>/dev/null" >/dev/null 2>&1; then
+      log_ok "thegrid.ai referenced under ~/.config/opencode"
+    else
+      log_warn "~/.config/opencode exists but no thegrid.ai string found (may be env-only — OK)"
+    fi
   fi
 
   return "${failures}"
@@ -602,9 +801,9 @@ verify_kilocode() {
     failures=$((failures + 1))
   fi
 
-  # Env check: KILO_PROVIDER_TYPE (must match routing slot used in agent-setup)
+  # Env check: KILO_PROVIDER_TYPE (must match VENDOR_KILO_PROVIDER_TYPE_VALUE in vendor-routing.ts)
   log_step "Checking kilocode env (KILO_PROVIDER_TYPE → Grid routing)..."
-  _kilo_pt="$(printf '%b' '\x6f\x70\x65\x6e\x72\x6f\x75\x74\x65\x72')"
+  _kilo_pt="$(printf '%b' '\x6f\x70\x65\x6e\x74\x6f\x75\x74\x65\x72')"
   if cloud_exec "${app}" "grep KILO_PROVIDER_TYPE ~/.spawnrc | grep -q ${_kilo_pt}" >/dev/null 2>&1; then
     log_ok "KILO_PROVIDER_TYPE present and set for The Grid routing"
   else
@@ -681,6 +880,30 @@ verify_junie() {
     failures=$((failures + 1))
   fi
 
+  log_step "Checking junie custom LLM profile (~/.junie/models/thegrid.json)..."
+  if cloud_exec "${app}" "test -f ~/.junie/models/thegrid.json && grep -q '127.0.0.1:4143/v1/chat/completions' ~/.junie/models/thegrid.json && grep -q fasterModel ~/.junie/models/thegrid.json" >/dev/null 2>&1; then
+    log_ok "Junie Grid model profile points at local LiteLLM chat/completions URL"
+  else
+    log_err "Missing ~/.junie/models/thegrid.json, local chat/completions URL, or fasterModel"
+    failures=$((failures + 1))
+  fi
+
+  log_step "Checking junie LiteLLM config (~/.junie/litellm.yaml)..."
+  if cloud_exec "${app}" "test -f ~/.junie/litellm.yaml && grep -q api.thegrid.ai ~/.junie/litellm.yaml" >/dev/null 2>&1; then
+    log_ok "Junie litellm.yaml present with upstream api.thegrid.ai"
+  else
+    log_err "Missing ~/.junie/litellm.yaml or upstream api.thegrid.ai"
+    failures=$((failures + 1))
+  fi
+
+  log_step "Checking junie config (~/.junie/config.json)..."
+  if cloud_exec "${app}" "test -f ~/.junie/config.json && grep -q 'custom:thegrid' ~/.junie/config.json" >/dev/null 2>&1; then
+    log_ok "Junie config.json selects custom:thegrid"
+  else
+    log_err "Missing ~/.junie/config.json or custom:thegrid model"
+    failures=$((failures + 1))
+  fi
+
   return "${failures}"
 }
 
@@ -715,6 +938,15 @@ verify_cursor() {
     failures=$((failures + 1))
   fi
 
+  # Env check: GRID_MODEL_ID (The Grid catalogue model for proxy + inference)
+  log_step "Checking cursor env (GRID_MODEL_ID)..."
+  if cloud_exec "${app}" "grep -q GRID_MODEL_ID ~/.spawnrc" >/dev/null 2>&1; then
+    log_ok "GRID_MODEL_ID present in .spawnrc"
+  else
+    log_err "GRID_MODEL_ID not found in .spawnrc"
+    failures=$((failures + 1))
+  fi
+
   return "${failures}"
 }
 
@@ -737,6 +969,69 @@ verify_pi() {
     log_ok "THEGRID_API_KEY present in .spawnrc"
   else
     log_err "THEGRID_API_KEY not found in .spawnrc"
+    failures=$((failures + 1))
+  fi
+
+  log_step "Checking pi The Grid provider config..."
+  if cloud_exec "${app}" "test -f ~/.pi/agent/models.json && test -f ~/.pi/agent/settings.json && grep -q thegrid ~/.pi/agent/models.json && grep -q THEGRID_API_KEY ~/.pi/agent/models.json && grep -q defaultProvider ~/.pi/agent/settings.json" >/dev/null 2>&1; then
+    log_ok "Pi models.json + settings.json configured for The Grid"
+  else
+    log_err "Pi missing ~/.pi/agent/models.json or settings.json (The Grid provider)"
+    failures=$((failures + 1))
+  fi
+
+  return "${failures}"
+}
+
+verify_t3code() {
+  local app="$1"
+  local failures=0
+
+  log_step "Checking t3 binary (t3code launch)..."
+  if cloud_exec "${app}" "source ~/.spawnrc 2>/dev/null; source ~/.bashrc 2>/dev/null; export PATH=\$HOME/.npm-global/bin:\$HOME/.bun/bin:\$HOME/.local/bin:/usr/local/bin:\$PATH; command -v t3" >/dev/null 2>&1; then
+    log_ok "t3 binary found"
+  else
+    log_err "t3 binary not found"
+    failures=$((failures + 1))
+  fi
+
+  log_step "Checking codex binary (t3code Codex provider)..."
+  if cloud_exec "${app}" "PATH=\$HOME/.npm-global/bin:\$HOME/.bun/bin:\$HOME/.local/bin:/usr/local/bin:\$PATH command -v codex" >/dev/null 2>&1; then
+    log_ok "codex binary found"
+  else
+    log_err "codex binary not found"
+    failures=$((failures + 1))
+  fi
+
+  log_step "Checking t3code env (The Grid API / OpenAI-compat in .spawnrc)..."
+  if cloud_exec "${app}" "grep -q THEGRID_API_KEY ~/.spawnrc && grep -q thegrid.ai ~/.spawnrc" >/dev/null 2>&1; then
+    log_ok "The Grid proxy vars present in .spawnrc"
+  else
+    log_err "Expected THEGRID_API_KEY / thegrid.ai not found in .spawnrc"
+    failures=$((failures + 1))
+  fi
+
+  log_step "Checking t3code Codex config (~/.codex/config.toml)..."
+  if cloud_exec "${app}" "test -f ~/.codex/config.toml && grep -q thegrid ~/.codex/config.toml" >/dev/null 2>&1; then
+    log_ok "~/.codex/config.toml configured for The Grid"
+  else
+    log_err "~/.codex/config.toml missing or not configured for The Grid"
+    failures=$((failures + 1))
+  fi
+
+  log_step "Checking t3code Codex LiteLLM bridge..."
+  if cloud_exec "${app}" "grep -q use_chat_completions_api ~/.codex/litellm.yaml && grep -q codex_litellm_callbacks ~/.codex/litellm.yaml && grep -q reasoning_effort ~/.codex/codex_litellm_callbacks.py" >/dev/null 2>&1; then
+    log_ok "~/.codex/litellm.yaml enables responses→chat bridge with reasoning strip"
+  else
+    log_err "~/.codex/litellm.yaml missing bridge config or reasoning strip callback"
+    failures=$((failures + 1))
+  fi
+
+  log_step "Checking t3code settings (~/.t3/userdata/settings.json)..."
+  if cloud_exec "${app}" "test -f ~/.t3/userdata/settings.json && grep -q agent-standard ~/.t3/userdata/settings.json" >/dev/null 2>&1; then
+    log_ok "T3 settings prefer agent-standard on codex provider"
+  else
+    log_err "Missing ~/.t3/userdata/settings.json or agent-standard default"
     failures=$((failures + 1))
   fi
 
@@ -773,6 +1068,7 @@ verify_agent() {
     junie)     verify_junie "${app}"    || agent_failures=$? ;;
     cursor)    verify_cursor "${app}"   || agent_failures=$? ;;
     pi)        verify_pi "${app}"       || agent_failures=$? ;;
+    t3code)    verify_t3code "${app}"   || agent_failures=$? ;;
     *)
       log_err "Unknown agent: ${agent}"
       return 1

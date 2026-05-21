@@ -42,6 +42,11 @@ function getHelpUsageSection(): string {
   grid-spawn status --prune               Remove gone servers from history
   grid-spawn fix                          Full VM recovery (credentials, install, config, daemons)
   grid-spawn fix <spawn-id>               Fix a specific spawn by name or ID
+  grid-spawn resume                       Continue provisioning an incomplete/failed spawn (SSH clouds)
+  grid-spawn resume <spawn-id>            Resume a specific incomplete spawn
+  grid-spawn resume --recover             Import crash-safe checkpoints from ~/.config/grid-spawn/runs/
+  grid-spawn cleanup digitalocean         Remove stale DO droplets tagged by Grid Spawn (see --dry-run)
+  grid-spawn cleanup --dry-run            List droplets that would be removed (default cloud: digitalocean)
   grid-spawn link <ip>                    Register an existing VM by IP (alias: reconnect)
   grid-spawn link <ip> --agent <agent>    Specify the agent running on the VM
   grid-spawn link <ip> --cloud <cloud>    Specify the cloud provider

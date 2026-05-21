@@ -2,20 +2,35 @@
 // sh/e2e/interactive-harness.ts — AI-driven interactive E2E test for grid-spawn CLI
 //
 // Spawns grid-spawn in a real PTY (via `script` command), feeds terminal output to
-// Claude Haiku, and types responses like a human user would.
+// The Grid (OpenAI-compatible chat), and types responses like a human user would.
 //
 // Usage: bun run sh/e2e/interactive-harness.ts <agent> <cloud>
 //
 // Required env:
-//   ANTHROPIC_API_KEY   — For the AI driver (Claude Haiku)
-//   THEGRID_API_KEY     — Injected into the CLI for the agent
+//   THEGRID_API_KEY     — The Grid key for the AI driver (OpenAI-compatible chat) and for the agent under test
 //   Cloud credentials   — HCLOUD_TOKEN, DIGITALOCEAN_ACCESS_TOKEN, AWS_ACCESS_KEY_ID, etc.
+//
+// Optional:
+//   THEGRID_API_URL      — Override inference API base (default https://api.thegrid.ai/v1)
+//   GRID_OPENAI_BASE_URL — Alias for THEGRID_API_URL (legacy)
+//   INTERACTIVE_DRIVER_MODEL_ID / MODEL_ID — Chat model id (default agent-standard)
 //
 // Outputs JSON to stdout: { success: boolean, duration: number, transcript: string, uxIssues?: UxIssue[] }
 
 const IDLE_MS = 2000; // Wait 2s of silence before asking AI
 const SESSION_TIMEOUT_MS = 20 * 60 * 1000; // 20 minute overall timeout (provision takes 3-4 min + onboarding)
-const AI_MODEL = "claude-haiku-4-5-20251001";
+
+const GRID_OPENAI_BASE = (
+  process.env.THEGRID_API_URL ??
+  process.env.GRID_OPENAI_BASE_URL ??
+  "https://api.thegrid.ai/v1"
+).replace(/\/+$/, "");
+const AI_MODEL = (
+  process.env.INTERACTIVE_DRIVER_MODEL_ID ??
+  process.env.MODEL_ID ??
+  "agent-standard"
+)
+  .trim() || "agent-standard";
 
 // ─── Args & validation ──────────────────────────────────────────────────
 
@@ -25,15 +40,11 @@ if (!agent || !cloud) {
   process.exit(1);
 }
 
-const apiKey = process.env.ANTHROPIC_API_KEY ?? "";
-if (!apiKey) {
-  process.stderr.write("ANTHROPIC_API_KEY is required for the AI driver\n");
-  process.exit(1);
-}
-
 const gridApiKey = (process.env.THEGRID_API_KEY ?? "").trim();
 if (!gridApiKey) {
-  process.stderr.write("THEGRID_API_KEY is required for the agent under test\n");
+  process.stderr.write(
+    "THEGRID_API_KEY is required (interactive AI driver and agent under test)\n",
+  );
   process.exit(1);
 }
 process.env.THEGRID_API_KEY = gridApiKey;
@@ -85,7 +96,6 @@ function redactSecrets(text: string): string {
     process.env.DO_API_TOKEN,
     process.env.AWS_ACCESS_KEY_ID,
     process.env.AWS_SECRET_ACCESS_KEY,
-    process.env.ANTHROPIC_API_KEY,
   ];
   for (const s of secrets) {
     if (s && s.length > 8) {
@@ -95,46 +105,55 @@ function redactSecrets(text: string): string {
   return result;
 }
 
-// ─── Claude API ─────────────────────────────────────────────────────────
+// ─── The Grid (OpenAI-compatible chat) — interactive driver only ────────
 
 interface Message {
   role: "user" | "assistant";
   content: string;
 }
 
-async function askClaude(
+async function askDriverModel(
   systemPrompt: string,
   messages: Message[],
   maxTokens = 256,
 ): Promise<string> {
-  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+  const resp = await fetch(`${GRID_OPENAI_BASE}/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
+      Authorization: `Bearer ${gridApiKey}`,
     },
     body: JSON.stringify({
       model: AI_MODEL,
       max_tokens: maxTokens,
-      system: systemPrompt,
-      messages,
+      messages: [{ role: "system", content: systemPrompt }, ...messages],
     }),
     signal: AbortSignal.timeout(30_000),
   });
 
   if (!resp.ok) {
     const body = await resp.text();
-    throw new Error(`Claude API ${resp.status}: ${body.slice(0, 200)}`);
+    throw new Error(`Grid chat API ${resp.status}: ${body.slice(0, 200)}`);
   }
 
-  const data = await resp.json();
-  // data.content is an array of content blocks
-  const blocks = Array.isArray(data?.content) ? data.content : [];
-  const textBlock = blocks.find(
-    (b: Record<string, unknown>) => b.type === "text",
-  );
-  return typeof textBlock?.text === "string" ? textBlock.text.trim() : "";
+  const data = (await resp.json()) as {
+    choices?: Array<{ message?: { content?: unknown } }>;
+  };
+  const raw = data?.choices?.[0]?.message?.content;
+  if (typeof raw === "string") {
+    return raw.trim();
+  }
+  if (Array.isArray(raw)) {
+    const text = raw
+      .map((b) =>
+        b && typeof b === "object" && (b as { text?: unknown }).text != null
+          ? String((b as { text: unknown }).text)
+          : "",
+      )
+      .join("");
+    return text.trim();
+  }
+  return "";
 }
 
 // ─── UX review ──────────────────────────────────────────────────────────
@@ -182,7 +201,7 @@ async function reviewTranscriptForUX(transcript: string): Promise<UxIssue[]> {
   process.stderr.write("[harness] Reviewing transcript for UX issues...\n");
 
   try {
-    const text = await askClaude(
+    const text = await askDriverModel(
       UX_REVIEW_SYSTEM,
       [
         {
@@ -363,7 +382,7 @@ async function main(): Promise<void> {
       break;
     }
 
-    // Ask Claude what to type
+    // Ask the driver model what to type
     turnCount++;
     process.stderr.write(
       `\n[harness] Turn ${turnCount}: asking AI (${stripped.length} chars of output)\n`,
@@ -375,7 +394,7 @@ async function main(): Promise<void> {
     });
 
     let response: string;
-    const aiResult = await askClaude(systemPrompt, messages).catch(
+    const aiResult = await askDriverModel(systemPrompt, messages).catch(
       (err: Error) => {
         process.stderr.write(`[harness] AI error: ${err.message}\n`);
         return "<wait>";

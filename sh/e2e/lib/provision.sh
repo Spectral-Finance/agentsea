@@ -27,6 +27,19 @@ provision_agent() {
     return 1
   fi
 
+  # Abandoned ~/.config/grid-spawn/runs/headless-provision.lock blocks every headless provision
+  # for up to 45m (see packages/cli/src/shared/headless-lock.ts). E2E often kills bun without
+  # SIGTERM, so release the lock when the recorded holder PID is not running.
+  local _hlock="${HOME}/.config/grid-spawn/runs/headless-provision.lock"
+  if [ -f "${_hlock}" ]; then
+    local _hold_pid
+    _hold_pid=$(head -n1 "${_hlock}" 2>/dev/null | tr -d ' \t\r\n' || true)
+    if [ -z "${_hold_pid}" ] || ! kill -0 "${_hold_pid}" 2>/dev/null; then
+      log_info "Removing stale headless provision lock (holder PID ${_hold_pid:-?} not running)"
+      rm -f "${_hlock}" 2>/dev/null || true
+    fi
+  fi
+
   local exit_file="${log_dir}/${app_name}.exit"
   local stdout_file="${log_dir}/${app_name}.stdout"
   local stderr_file="${log_dir}/${app_name}.stderr"
@@ -236,8 +249,11 @@ CLOUD_ENV
   local api_key="${THEGRID_API_KEY:-}"
   if [ -z "${api_key}" ]; then
     log_err "Cannot create .spawnrc fallback — THEGRID_API_KEY not set"
-    return 0
+    return 1
   fi
+
+  local grid_inference_base="${THEGRID_API_URL:-https://api.thegrid.ai/v1}"
+  grid_inference_base="${grid_inference_base%/}"
 
   # Build env lines in a temp file to avoid interpolating api_key into shell
   # strings directly (prevents command injection if the key contains shell
@@ -253,37 +269,41 @@ CLOUD_ENV
     printf '%s\n' "# [spawn:env]"
     printf 'export IS_SANDBOX=%q\n' "1"
     printf 'export THEGRID_API_KEY=%q\n' "${api_key}"
+    if [ -n "${THEGRID_API_URL:-}" ]; then
+      printf 'export THEGRID_API_URL=%q\n' "${grid_inference_base}"
+    fi
   } > "${env_tmp}"
 
   # Add agent-specific env vars
   case "${agent}" in
     claude)
       {
-        printf 'export ANTHROPIC_BASE_URL=%q\n' "https://api.thegrid.ai/api/v1"
+        printf 'export ANTHROPIC_BASE_URL=%q\n' "https://api.thegrid.ai/api"
+        printf 'export ANTHROPIC_API_KEY=%q\n' "${api_key}"
         printf 'export ANTHROPIC_AUTH_TOKEN=%q\n' "${api_key}"
       } >> "${env_tmp}"
       ;;
     openclaw)
       {
         printf 'export OPENAI_API_KEY=%q\n' "${api_key}"
-        printf 'export OPENAI_BASE_URL=%q\n' "https://api.thegrid.ai/api/v1"
+        printf 'export OPENAI_BASE_URL=%q\n' "${grid_inference_base}"
       } >> "${env_tmp}"
       ;;
     codex)
       {
         printf 'export OPENAI_API_KEY=%q\n' "${api_key}"
-        printf 'export OPENAI_BASE_URL=%q\n' "https://api.thegrid.ai/api/v1"
+        printf 'export OPENAI_BASE_URL=%q\n' "${grid_inference_base}"
       } >> "${env_tmp}"
       ;;
     hermes)
       {
-        printf 'export OPENAI_BASE_URL=%q\n' "https://api.thegrid.ai/api/v1"
+        printf 'export OPENAI_BASE_URL=%q\n' "http://127.0.0.1:4142/v1"
         printf 'export OPENAI_API_KEY=%q\n' "${api_key}"
       } >> "${env_tmp}"
       ;;
     kilocode)
       {
-        _kilo_pt="$(printf '%b' '\x6f\x70\x65\x6e\x72\x6f\x75\x74\x65\x72')"
+        _kilo_pt="$(printf '%b' '\x6f\x70\x65\x6e\x74\x6f\x75\x74\x65\x72')"
         printf 'export KILO_PROVIDER_TYPE=%q\n' "${_kilo_pt}"
         printf 'export KILO_OPEN_ROUTER_API_KEY=%q\n' "${api_key}"
       } >> "${env_tmp}"

@@ -21,7 +21,12 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "format": "prettier --check \"packages/*/src/**/*.{ts,tsx,scss,json,md}\" \"packages/*/README.md\" \"README.md\" \"manifest.json\"",
-    "format:fix": "prettier --write \"packages/*/src/**/*.{ts,tsx,scss,json,md}\" \"packages/*/README.md\" \"README.md\" \"manifest.json\""
+    "format:fix": "prettier --write \"packages/*/src/**/*.{ts,tsx,scss,json,md}\" \"packages/*/README.md\" \"README.md\" \"manifest.json\"",
+    "test": "npm run test --workspaces --if-present",
+    "test:cli": "npm run test --workspace=@grid-spawn/cli",
+    "test:cli:integration": "npm run test:integration --workspace=@grid-spawn/cli",
+    "test:cli:e2e:do": "npm run test:e2e:do --workspace=@grid-spawn/cli",
+    "e2e:do:sequential:manifest": "bash ./sh/e2e/e2e.sh --cloud digitalocean --sequential --agents-from-manifest digitalocean --first-agent openclaw"
   },
   "devDependencies": {
     "prettier": "^3.6.2",

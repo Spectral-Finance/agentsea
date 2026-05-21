@@ -8,7 +8,17 @@ import type { HomeAgentVm } from "./landing-from-manifest";
 import { GRID_SPAWN_REQUEST_AGENT_MAILTO } from "./home-public-constants";
 import styles from "./page.module.scss";
 
-export const HomeAgentPick = memo(function HomeAgentPickComp({ agents }: { agents: HomeAgentVm[] }) {
+export type HomeAgentPickProps = {
+  agents: HomeAgentVm[];
+  selectedAgentSlug: string | null;
+  onSelectAgent: (slug: string) => void;
+};
+
+export const HomeAgentPick = memo(function HomeAgentPickComp({
+  agents,
+  selectedAgentSlug,
+  onSelectAgent,
+}: HomeAgentPickProps) {
   const [q, setQ] = useState("");
 
   const filtered = useMemo(() => {
@@ -23,7 +33,7 @@ export const HomeAgentPick = memo(function HomeAgentPickComp({ agents }: { agent
   return (
     <section className={styles["band"]} aria-labelledby="pick-title">
       <div className={styles["sectionHead"]}>
-        <span className={styles["sectionHead__index"]} aria-hidden>
+        <span className={styles["sectionHead__index"]} aria-hidden="true">
           1
         </span>
         <h2 id="pick-title" className={styles["sectionHead__title"]}>
@@ -53,12 +63,22 @@ export const HomeAgentPick = memo(function HomeAgentPickComp({ agents }: { agent
 
       <ul className={styles["agentGrid"]}>
         {filtered.map((a) => {
-          const muted = !a.available;
-          return (
-            <li
-              key={a.slug}
-              className={`${styles["agentCard"]} ${a.highlight ? styles["agentCard--hot"] : ""} ${muted ? styles["agentCard--muted"] : ""}`.trim()}
-            >
+          const selectable = a.chatVerified && a.available;
+          const muted = !selectable;
+          const selected = selectedAgentSlug === a.slug;
+
+          const cardClass = [
+            styles["agentCard"],
+            a.highlight ? styles["agentCard--hot"] : "",
+            muted ? styles["agentCard--disabled"] : "",
+            selectable ? styles["agentCard--clickable"] : "",
+            selected ? styles["agentCard--selected"] : "",
+          ]
+            .filter(Boolean)
+            .join(" ");
+
+          const inner = (
+            <>
               <div className={styles["agentCard__top"]}>
                 <div className={styles["agentCard__logo"]} aria-hidden>
                   {a.image ? (
@@ -85,6 +105,25 @@ export const HomeAgentPick = memo(function HomeAgentPickComp({ agents }: { agent
                   <span className={styles["agentCard__metricValue"]}>{a.metricValue}</span>
                 </div>
               </div>
+            </>
+          );
+
+          return (
+            <li key={a.slug}>
+              {selectable ? (
+                <button
+                  type="button"
+                  className={cardClass}
+                  aria-pressed={selected}
+                  onClick={() => onSelectAgent(a.slug)}
+                >
+                  {inner}
+                </button>
+              ) : (
+                <div className={cardClass} aria-disabled="true">
+                  {inner}
+                </div>
+              )}
             </li>
           );
         })}

@@ -1,15 +1,17 @@
 import Link from "next/link";
+import { Suspense } from "react";
 
 import { CopyCode } from "./copy-code";
-import { HomeAgentPick } from "./home-agent-pick";
+import { HomeLaunchFlow } from "./home-launch-flow";
 import {
   GRID_SPAWN_INSTALL_URL,
   GRID_SPAWN_OPENCLAW_DO_ONELINER,
-  GRID_SPAWN_PUBLIC_ORIGIN,
+  isGridSpawnCdnConfigured,
   THE_GRID_EXTERNAL_URL,
 } from "./home-public-constants";
-import { homeAgentsFromManifest } from "./landing-from-manifest";
+import { homeAgentCloudAvailability, homeAgentsFromManifest, homeCloudOptionsFromManifest } from "./landing-from-manifest";
 import { SiteHeader } from "./site-header";
+import { SpawnCopyBlock } from "./spawn-copy-block";
 import styles from "./page.module.scss";
 
 import { loadManifest } from "@grid-spawn/sdk/node";
@@ -24,11 +26,11 @@ const INSTALL_SNIPPET = `curl -fsSL ${GRID_SPAWN_INSTALL_URL} | bash`;
 
 const WITHOUT_CLI_SNIPPET = `bash <(curl -fsSL ${GRID_SPAWN_OPENCLAW_DO_ONELINER})`;
 
-const ONE_LINER_PATTERN = `${GRID_SPAWN_PUBLIC_ORIGIN}/<cloud>/<agent>.sh`;
-
 export default async function HomePage() {
   const manifest = await loadManifest(false);
   const agents = homeAgentsFromManifest(manifest);
+  const cloudOptions = homeCloudOptionsFromManifest(manifest);
+  const agentCloudAvailability = homeAgentCloudAvailability(manifest);
   return (
     <div className={styles["page"]}>
       <SiteHeader />
@@ -38,33 +40,29 @@ export default async function HomePage() {
             <h1 id="hero-title" className={styles["hero__title"]}>
               Spawn AI agents locally or on the cloud
             </h1>
-            <p className={styles["hero__tagline"]}>Any agent, on your infrastructure — wired to The Grid API</p>
+            <p className={styles["hero__tagline"]}>
+              Any agent, on your infrastructure — wired to The Grid API.
+            </p>
           </section>
 
-          <HomeAgentPick agents={agents} />
-          <section className={styles["band"]} aria-labelledby="without-cli-title">
-            <h2 id="without-cli-title" className={styles["h2"]}>
-              Without the CLI
-            </h2>
-            <p className={styles["lede"]}>
-              Same flow as packaged CLIs elsewhere: fetch a bootstrap script when you don&apos;t want a global install
-              yet. (URLs are placeholders until the CDN ships.)
-            </p>
-            <div className={styles["withoutCliCard"]}>
-              <h3 className={styles["withoutCliTitle"]}>One-liner (example)</h3>
-              <p className={styles["withoutCliText"]}>
-                OpenClaw on DigitalOcean — thin shim that delegates to the control plane bundle:
-              </p>
-              <CopyCode label="shell" code={WITHOUT_CLI_SNIPPET} />
-              <p className={styles["withoutCliHint"]}>
-                Pattern: <code className={styles["hoodInstallCard__inline"]}>{ONE_LINER_PATTERN}</code> — see the{" "}
-                <Link href="/cli" className={styles["inlineLink"]}>
-                  CLI guide
-                </Link>{" "}
-                for auth and tokens.
-              </p>
-            </div>
-          </section>
+          <Suspense fallback={null}>
+            <HomeLaunchFlow
+              agents={agents}
+              cloudOptions={cloudOptions}
+              agentCloudAvailability={agentCloudAvailability}
+            />
+          </Suspense>
+          {isGridSpawnCdnConfigured && (
+            <section className={styles["band"]} aria-labelledby="without-cli-title">
+              <h2 id="without-cli-title" className={styles["h2"]}>
+                Without the CLI
+              </h2>
+              <p className={styles["lede"]}>One curl command. No global install.</p>
+              <div className={styles["withoutCliCopy"]}>
+                <SpawnCopyBlock code={WITHOUT_CLI_SNIPPET} />
+              </div>
+            </section>
+          )}
 
           <section className={styles["band"]} aria-labelledby="hood-title">
             <h2 id="hood-title" className={styles["h2"]}>
@@ -98,9 +96,7 @@ export default async function HomePage() {
             </div>
 
             <p className={styles["hoodPipelineLead"]}>
-              <strong>On each spawn</strong>, the CLI provisions your cloud VM and installs the agent bundle from the{" "}
-              <code className={styles["hoodInstallCard__code"]}>manifest.json</code> matrix (<code>/sh/</code>
-              userdata).
+              <strong>On each spawn</strong>, the CLI provisions your cloud VM and installs the agent.
             </p>
             <ol className={styles["hoodSteps"]}>
               <li className={styles["hoodStep"]}>
@@ -165,7 +161,7 @@ export default async function HomePage() {
               <div className={styles["whyCard"]}>
                 <h3 className={styles["whyCard__h"]}>Agent-agnostic</h3>
                 <p className={styles["whyCard__p"]}>
-                  Start with OpenClaw; add more agents through recipes instead of one-off forks.
+                  Start with OpenClaw, Codex, or OpenCode, then add more agents as they become available.
                 </p>
               </div>
               <div className={styles["whyCard"]}>

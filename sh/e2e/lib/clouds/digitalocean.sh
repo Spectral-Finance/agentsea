@@ -154,6 +154,11 @@ _digitalocean_provision_verify() {
 #
 # Executes a command on the droplet via SSH as root.
 # Reads the IP from $LOG_DIR/$APP.ip.
+#
+# Uses the same identity order as the CLI (spawn_ed25519, then legacy keys),
+# capped at 3 — see packages/cli/src/shared/ssh-keys.ts (ensureSshKeys).
+# Droplets are provisioned with the spawn-managed public key; without -i,
+# BatchMode SSH often has no matching key and .spawnrc polling never succeeds.
 # ---------------------------------------------------------------------------
 _digitalocean_exec() {
   local app="$1"
@@ -194,7 +199,19 @@ _digitalocean_exec() {
     return 1
   fi
 
-  ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null \
+  local ssh_id_args=()
+  local _k
+  local _id_count=0
+  for _k in "${HOME}/.ssh/spawn_ed25519" "${HOME}/.ssh/id_ed25519" "${HOME}/.ssh/id_rsa" "${HOME}/.ssh/id_ecdsa"; do
+    [ -f "${_k}" ] || continue
+    ssh_id_args+=(-i "${_k}")
+    _id_count=$((_id_count + 1))
+    if [ "${_id_count}" -ge 3 ]; then
+      break
+    fi
+  done
+
+  ssh "${ssh_id_args[@]}" -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null \
       -o ConnectTimeout=10 -o LogLevel=ERROR -o BatchMode=yes \
       "root@${ip}" "printf '%s' '${encoded_cmd}' | base64 -d | bash"
 }

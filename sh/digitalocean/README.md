@@ -133,3 +133,7 @@ Pass `--custom` to select from a menu of regions and droplet sizes interactively
 ```bash
 bash <(curl -fsSL https://spawn.thegrid.ai/digitalocean/claude.sh) --custom
 ```
+
+## Integration tests (E2E)
+
+Sequential runs that provision DigitalOcean droplets, verify installs, and tear down are documented in [sh/e2e/README.md](../e2e/README.md). From the repo root, `npm run e2e:do:sequential:manifest` runs every manifest-implemented DigitalOcean agent in order (OpenClaw first).
