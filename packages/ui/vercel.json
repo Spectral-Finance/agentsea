@@ -4,7 +4,7 @@
   ],
   "headers": [
     {
-      "source": "/(manifest\.json|sh/(.+\\.sh|.+\\.ps1)|assets/.+)",
+      "source": "/(manifest\\.json|sh/(.+\\.sh|.+\\.ps1)|assets/.+)",
       "headers": [
         {
           "key": "Cache-Control",
