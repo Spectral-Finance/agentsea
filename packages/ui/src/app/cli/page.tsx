@@ -12,6 +12,15 @@ type CliGuidePageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
+async function loadManifestSafe() {
+  try {
+    return await loadManifest(false);
+  } catch (error) {
+    console.error("[/cli] failed to load manifest", error);
+    return null;
+  }
+}
+
 function firstParam(value: string | string[] | undefined): string | undefined {
   if (typeof value === "string") return value;
   if (Array.isArray(value)) return value[0];
@@ -23,7 +32,21 @@ export async function generateMetadata({ searchParams }: CliGuidePageProps): Pro
   const agentSlug = firstParam(resolved.agent);
   const cloudParam = firstParam(resolved.cloud);
 
-  const manifest = await loadManifest(false);
+  if (!agentSlug && !cloudParam) {
+    return {
+      title: "CLI reference — Grid Spawn",
+      description: "Install and use the grid-spawn CLI: commands, environment variables, and tokens.",
+    };
+  }
+
+  const manifest = await loadManifestSafe();
+  if (!manifest) {
+    return {
+      title: "CLI reference — Grid Spawn",
+      description: "Install and use the grid-spawn CLI: commands, environment variables, and tokens.",
+    };
+  }
+
   const agentMeta = agentSlug ? manifest.agents[agentSlug] : undefined;
   const launch = resolveLaunchCloud(manifest, agentSlug, cloudParam);
 
@@ -44,9 +67,9 @@ export default async function CliGuidePage({ searchParams }: CliGuidePageProps) 
   const agentSlug = firstParam(resolved.agent);
   const cloudParam = firstParam(resolved.cloud);
 
-  const manifest = await loadManifest(false);
-  const agentMeta = agentSlug ? manifest.agents[agentSlug] : undefined;
-  const launch = resolveLaunchCloud(manifest, agentSlug, cloudParam);
+  const manifest = agentSlug || cloudParam ? await loadManifestSafe() : null;
+  const agentMeta = manifest && agentSlug ? manifest.agents[agentSlug] : undefined;
+  const launch = manifest ? resolveLaunchCloud(manifest, agentSlug, cloudParam) : null;
 
   return (
     <div className={styles["page"]}>
