@@ -81,6 +81,9 @@ export function HomeAgentGridStatic({ agents }: { agents: HomeAgentVm[] }) {
                     </div>
                   )}
                 </div>
+                <span className={styles["agentCard__hoverBot"]} aria-hidden>
+                  <span className={styles["agentCard__hoverBotEye"]} />
+                </span>
               </div>
             </li>
           );

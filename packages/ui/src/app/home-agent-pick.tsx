@@ -123,6 +123,9 @@ export const HomeAgentPick = memo(function HomeAgentPickComp({
                   </div>
                 )}
               </div>
+              <span className={styles["agentCard__hoverBot"]} aria-hidden>
+                <span className={styles["agentCard__hoverBotEye"]} />
+              </span>
             </>
           );
 
