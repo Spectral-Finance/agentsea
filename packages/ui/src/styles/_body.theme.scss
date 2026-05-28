@@ -4,29 +4,29 @@
 
   --base-1: 255 255 255;
   --base-1-h: 245 247 250;
-  --base-2: 240 243 247;
-  --base-2-h: 232 237 243;
-  --base-3: 244 247 251;
-  --base-3-h: 234 240 246;
-  --base-4: 220 228 236;
-  --base-4-h: 200 212 222;
-  --base-5: 200 212 222;
-  --base-5-h: 180 196 209;
-  --base-6: 160 180 196;
-  --base-6-h: 130 156 177;
+  --base-2: 242 244 247;
+  --base-2-h: 234 238 243;
+  --base-3: 246 248 251;
+  --base-3-h: 239 243 248;
+  --base-4: 226 232 239;
+  --base-4-h: 208 218 229;
+  --base-5: 208 218 229;
+  --base-5-h: 188 202 217;
+  --base-6: 170 187 204;
+  --base-6-h: 141 163 184;
 
-  --stroke-1: 220 228 236;
-  --stroke-2: 180 196 209;
-  --stroke-3: 130 156 177;
+  --stroke-1: 226 232 239;
+  --stroke-2: 188 202 217;
+  --stroke-3: 141 163 184;
 
   --text: 18 24 28;
   --text-neutral: 70 90 105;
   --text-heavy: 110 132 150;
   --text-inverse: 247 248 250;
 
-  --text-highlight: 64 90 230;
-  --text-highlight-2: 50 73 200;
-  --text-accent: 200 152 0;
+  --text-highlight: 166 121 15;
+  --text-highlight-2: 145 105 10;
+  --text-accent: 166 121 15;
 
   --text-positive: 34 130 50;
   --text-positive-h: 50 160 70;
@@ -34,11 +34,11 @@
   --text-negative: 200 50 60;
   --text-negative-h: 220 80 90;
 
-  --highlight: 255 205 26;
-  --highlight-h: 255 216 77;
+  --highlight: 255 209 34;
+  --highlight-h: 255 222 88;
 
-  --accent: 0 73 230;
-  --accent-h: 30 100 250;
+  --accent: 245 196 28;
+  --accent-h: 255 209 34;
 
   --positive: 64 120 8;
   --positive-h: 89 168 11;
@@ -55,54 +55,54 @@
 // Dark mode (default — matches grid-ui's default dark)
 html.dark,
 html[data-dark="true"] {
-  --background: 10 13 15;
+  --background: 8 10 13;
 
-  --base-1: 15 20 23;
-  --base-1-h: 21 27 30;
-  --base-2: 26 33 38;
-  --base-2-h: 31 40 45;
-  --base-3: 21 27 30;
-  --base-3-h: 31 40 45;
-  --base-4: 31 40 45;
-  --base-4-h: 0 0 0;
-  --base-5: 31 40 46;
-  --base-5-h: 42 53 61;
-  --base-6: 52 66 76;
-  --base-6-h: 57 72 83;
+  --base-1: 14 18 24;
+  --base-1-h: 20 25 31;
+  --base-2: 22 28 35;
+  --base-2-h: 28 35 43;
+  --base-3: 18 23 30;
+  --base-3-h: 28 35 43;
+  --base-4: 31 39 47;
+  --base-4-h: 38 47 56;
+  --base-5: 38 47 56;
+  --base-5-h: 48 57 67;
+  --base-6: 56 67 78;
+  --base-6-h: 68 80 92;
 
-  --stroke-1: 31 40 45;
-  --stroke-2: 52 66 76;
-  --stroke-3: 72 92 106;
+  --stroke-1: 31 39 47;
+  --stroke-2: 48 57 67;
+  --stroke-3: 68 82 96;
 
-  --text: 240 243 245;
-  --text-neutral: 179 193 203;
-  --text-heavy: 119 144 162;
-  --text-inverse: 15 20 23;
+  --text: 238 242 247;
+  --text-neutral: 174 186 199;
+  --text-heavy: 124 141 158;
+  --text-inverse: 14 18 24;
 
-  --text-highlight: 128 168 255;
-  --text-highlight-2: 77 133 255;
-  --text-accent: 255 205 26;
+  --text-highlight: 255 209 34;
+  --text-highlight-2: 227 190 43;
+  --text-accent: 255 209 34;
 
-  --text-positive: 166 244 87;
-  --text-positive-h: 191 247 135;
+  --text-positive: 170 224 126;
+  --text-positive-h: 194 235 160;
 
-  --text-negative: 247 135 137;
-  --text-negative-h: 250 183 184;
+  --text-negative: 244 144 143;
+  --text-negative-h: 248 184 182;
 
-  --highlight: 255 205 26;
-  --highlight-h: 255 216 77;
+  --highlight: 255 209 34;
+  --highlight-h: 255 222 88;
 
-  --accent: 0 57 179;
-  --accent-h: 0 73 230;
+  --accent: 245 196 28;
+  --accent-h: 255 209 34;
 
-  --positive: 64 120 8;
-  --positive-h: 89 168 11;
+  --positive: 78 134 35;
+  --positive-h: 103 165 56;
 
-  --negative: 120 8 10;
-  --negative-h: 168 11 14;
+  --negative: 146 26 32;
+  --negative-h: 180 45 50;
 
   --warning: 255 152 0;
 
-  --row-filled: 24 43 10;
+  --row-filled: 42 58 25;
   --loader: 193 193 214;
 }
