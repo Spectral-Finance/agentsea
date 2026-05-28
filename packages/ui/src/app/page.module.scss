@@ -160,11 +160,113 @@
   height: 100%;
   @include flex(stretch, flex-start, column);
   @include padding(4, 5);
+  position: relative;
+  overflow: hidden;
   border-radius: br(m);
   border: 1px solid c(stroke-2);
   background: c(base-1);
   @include text(text-s);
   min-height: 17.5rem;
+}
+
+.agentCard__hoverBot {
+  position: absolute;
+  --bot-w: 1.85rem;
+  --bot-h: 1.2rem;
+  --bot-inset: 0.38rem;
+  left: var(--bot-inset);
+  top: var(--bot-inset);
+  width: 1.85rem;
+  height: 1.2rem;
+  border-radius: 0.55rem;
+  border: 1px solid color-mix(in srgb, rgb(var(--highlight)) 55%, c(stroke-2));
+  background: linear-gradient(180deg, c(base-2), c(base-3));
+  box-shadow:
+    0 1px 2px color-mix(in srgb, rgb(var(--highlight)) 22%, transparent),
+    inset 0 1px 0 color-mix(in srgb, c(base-1) 62%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transform: none;
+  z-index: 0;
+  will-change: top, left, transform;
+}
+
+.agentCard__hoverBot::before {
+  content: "";
+  position: absolute;
+  left: 0.55rem;
+  top: -0.28rem;
+  width: 0.72rem;
+  height: 0.2rem;
+  border-radius: 999px;
+  background: rgb(var(--accent));
+}
+
+.agentCard__hoverBot::after {
+  content: "";
+  position: absolute;
+  left: 0.54rem;
+  bottom: -0.08rem;
+  width: 0.14rem;
+  height: 0.2rem;
+  border-radius: 999px;
+  background: c(base-6);
+  box-shadow:
+    0.28rem 0 0 c(base-6),
+    0.56rem 0 0 c(base-6);
+}
+
+.agentCard__hoverBotEye {
+  position: absolute;
+  left: 0.38rem;
+  top: 0.42rem;
+  width: 1.1rem;
+  height: 0.28rem;
+  border-radius: 999px;
+  background: c(base-6);
+}
+
+.agentCard__hoverBotEye::before,
+.agentCard__hoverBotEye::after {
+  content: "";
+  position: absolute;
+  top: 0.05rem;
+  width: 0.18rem;
+  height: 0.18rem;
+  border-radius: 50%;
+  background: rgb(var(--accent));
+  box-shadow: 0 0 0.3rem color-mix(in srgb, rgb(var(--accent)) 52%, transparent);
+}
+
+.agentCard__hoverBotEye::before {
+  left: 0.22rem;
+}
+
+.agentCard__hoverBotEye::after {
+  right: 0.22rem;
+}
+
+:global(html:not(.dark):not([data-dark="true"])) .agentCard__hoverBot {
+  border-color: color-mix(in srgb, c(text-1) 26%, c(stroke-2));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, c(text-1) 14%, c(base-2)),
+    color-mix(in srgb, c(text-1) 30%, c(base-3))
+  );
+  box-shadow:
+    0 1px 2px color-mix(in srgb, c(text-1) 16%, transparent),
+    inset 0 1px 0 color-mix(in srgb, c(base-1) 34%, transparent);
+}
+
+:global(html:not(.dark):not([data-dark="true"])) .agentCard__hoverBotEye {
+  background: color-mix(in srgb, c(base-1) 62%, c(text-1));
+}
+
+:global(html:not(.dark):not([data-dark="true"])) .agentCard__hoverBot::after {
+  background: color-mix(in srgb, c(text-1) 36%, c(base-6));
+  box-shadow:
+    0.28rem 0 0 color-mix(in srgb, c(text-1) 36%, c(base-6)),
+    0.56rem 0 0 color-mix(in srgb, c(text-1) 36%, c(base-6));
 }
 
 .agentCard--clickable {
@@ -193,6 +295,16 @@
   }
 }
 
+.agentCard:hover .agentCard__hoverBot,
+.agentCard:focus-within .agentCard__hoverBot {
+  animation: agentCardBotTopRun 6.8s linear infinite;
+}
+
+.agentCard:hover .agentCard__hoverBot::after,
+.agentCard:focus-within .agentCard__hoverBot::after {
+  animation: agentCardBotLegs 0.36s steps(2, end) infinite;
+}
+
 .agentCard--selected {
   border-color: color-mix(in srgb, rgb(var(--highlight)) 70%, c(stroke-2));
   box-shadow: 0 0 0 1px color-mix(in srgb, rgb(var(--highlight)) 35%, transparent);
@@ -206,6 +318,127 @@
   opacity: 0.55;
   filter: saturate(0.4);
   cursor: not-allowed;
+}
+
+.agentCard--disabled .agentCard__hoverBot {
+  display: none;
+}
+
+.agentCard > :not(.agentCard__hoverBot) {
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes agentCardBotTopRun {
+  0% {
+    top: var(--bot-inset);
+    left: calc(-1 * var(--bot-w) - var(--bot-inset));
+    opacity: 0;
+    transform: none;
+  }
+
+  8% {
+    top: var(--bot-inset);
+    left: var(--bot-inset);
+    opacity: 1;
+    transform: none;
+  }
+
+  38% {
+    top: var(--bot-inset);
+    left: calc(100% - var(--bot-w) - var(--bot-inset));
+    opacity: 1;
+    transform: none;
+  }
+
+  45% {
+    top: var(--bot-inset);
+    left: calc(100% + var(--bot-inset));
+    opacity: 1;
+    transform: none;
+  }
+
+  45.1% {
+    top: var(--bot-inset);
+    left: calc(100% + var(--bot-inset));
+    opacity: 0;
+    transform: none;
+  }
+
+  45.2% {
+    top: calc(100% - var(--bot-h) - var(--bot-inset));
+    left: calc(-1 * var(--bot-w) - var(--bot-inset));
+    opacity: 0;
+    transform: none;
+  }
+
+  54% {
+    top: calc(100% - var(--bot-h) - var(--bot-inset));
+    left: var(--bot-inset);
+    opacity: 1;
+    transform: none;
+  }
+
+  86% {
+    top: calc(100% - var(--bot-h) - var(--bot-inset));
+    left: calc(100% - var(--bot-w) - var(--bot-inset));
+    opacity: 1;
+    transform: none;
+  }
+
+  93% {
+    top: calc(100% - var(--bot-h) - var(--bot-inset));
+    left: calc(100% + var(--bot-inset));
+    opacity: 1;
+    transform: none;
+  }
+
+  93.1% {
+    top: calc(100% - var(--bot-h) - var(--bot-inset));
+    left: calc(100% + var(--bot-inset));
+    opacity: 0;
+    transform: none;
+  }
+
+  93.2% {
+    top: var(--bot-inset);
+    left: calc(-1 * var(--bot-w) - var(--bot-inset));
+    opacity: 0;
+    transform: none;
+  }
+
+  100% {
+    top: var(--bot-inset);
+    left: calc(-1 * var(--bot-w) - var(--bot-inset));
+    opacity: 0;
+    transform: none;
+  }
+}
+
+@keyframes agentCardBotLegs {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(1px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agentCard:hover .agentCard__hoverBot,
+  .agentCard:focus-within .agentCard__hoverBot {
+    animation: none;
+    top: var(--bot-inset);
+    left: calc(100% - var(--bot-w) - var(--bot-inset));
+    transform: none;
+  }
+
+  .agentCard:hover .agentCard__hoverBot::after,
+  .agentCard:focus-within .agentCard__hoverBot::after {
+    animation: none;
+  }
 }
 
 .agentCard__top {

@@ -15,30 +15,30 @@
   --base-6: 170 187 204;
   --base-6-h: 141 163 184;
 
-  --stroke-1: 226 232 239;
-  --stroke-2: 188 202 217;
+  --stroke-1: 240 242 245;
+  --stroke-2: 227 230 234;
   --stroke-3: 141 163 184;
 
-  --text: 18 24 28;
-  --text-neutral: 70 90 105;
-  --text-heavy: 110 132 150;
+  --text: 25 33 61;
+  --text-neutral: 102 111 141;
+  --text-heavy: 126 133 159;
   --text-inverse: 247 248 250;
 
-  --text-highlight: 166 121 15;
-  --text-highlight-2: 145 105 10;
-  --text-accent: 166 121 15;
+  --text-highlight: 215 129 12;
+  --text-highlight-2: 157 95 19;
+  --text-accent: 215 129 12;
 
   --text-positive: 34 130 50;
   --text-positive-h: 50 160 70;
 
-  --text-negative: 200 50 60;
-  --text-negative-h: 220 80 90;
+  --text-negative: 241 39 43;
+  --text-negative-h: 244 87 90;
 
-  --highlight: 255 209 34;
-  --highlight-h: 255 222 88;
+  --highlight: 255 152 0;
+  --highlight-h: 255 181 95;
 
-  --accent: 245 196 28;
-  --accent-h: 255 209 34;
+  --accent: 215 129 12;
+  --accent-h: 255 152 0;
 
   --positive: 64 120 8;
   --positive-h: 89 168 11;
@@ -55,51 +55,51 @@
 // Dark mode (default — matches grid-ui's default dark)
 html.dark,
 html[data-dark="true"] {
-  --background: 8 10 13;
+  --background: 15 20 23;
 
-  --base-1: 14 18 24;
-  --base-1-h: 20 25 31;
-  --base-2: 22 28 35;
-  --base-2-h: 28 35 43;
-  --base-3: 18 23 30;
-  --base-3-h: 28 35 43;
-  --base-4: 31 39 47;
-  --base-4-h: 38 47 56;
-  --base-5: 38 47 56;
-  --base-5-h: 48 57 67;
-  --base-6: 56 67 78;
-  --base-6-h: 68 80 92;
+  --base-1: 21 27 30;
+  --base-1-h: 26 33 38;
+  --base-2: 31 40 45;
+  --base-2-h: 37 47 53;
+  --base-3: 26 33 38;
+  --base-3-h: 31 40 45;
+  --base-4: 37 47 53;
+  --base-4-h: 48 59 66;
+  --base-5: 48 59 66;
+  --base-5-h: 59 71 80;
+  --base-6: 68 82 93;
+  --base-6-h: 80 94 106;
 
-  --stroke-1: 31 39 47;
-  --stroke-2: 48 57 67;
-  --stroke-3: 68 82 96;
+  --stroke-1: 37 47 53;
+  --stroke-2: 59 71 80;
+  --stroke-3: 80 94 106;
 
-  --text: 238 242 247;
-  --text-neutral: 174 186 199;
-  --text-heavy: 124 141 158;
-  --text-inverse: 14 18 24;
+  --text: 247 248 250;
+  --text-neutral: 184 193 211;
+  --text-heavy: 144 157 178;
+  --text-inverse: 24 16 6;
 
-  --text-highlight: 255 209 34;
-  --text-highlight-2: 227 190 43;
-  --text-accent: 255 209 34;
+  --text-highlight: 255 152 0;
+  --text-highlight-2: 255 181 95;
+  --text-accent: 255 152 0;
 
   --text-positive: 170 224 126;
   --text-positive-h: 194 235 160;
 
-  --text-negative: 244 144 143;
-  --text-negative-h: 248 184 182;
+  --text-negative: 244 87 90;
+  --text-negative-h: 247 135 137;
 
-  --highlight: 255 209 34;
-  --highlight-h: 255 222 88;
+  --highlight: 255 152 0;
+  --highlight-h: 255 181 95;
 
-  --accent: 245 196 28;
-  --accent-h: 255 209 34;
+  --accent: 255 152 0;
+  --accent-h: 255 181 95;
 
   --positive: 78 134 35;
   --positive-h: 103 165 56;
 
-  --negative: 146 26 32;
-  --negative-h: 180 45 50;
+  --negative: 168 11 14;
+  --negative-h: 241 39 43;
 
   --warning: 255 152 0;
 
