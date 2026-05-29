@@ -5,9 +5,9 @@ import type { CloudInitTier } from "../shared/agents.js";
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { isString, toObjectArray } from "@grid-spawn/sdk";
+import { isString, toObjectArray } from "@agentsea/sdk";
 import { handleBillingError, isBillingError, showNonBillingError } from "../shared/billing-guidance.js";
-import { GRID_SPAWN_CLI } from "../shared/cli-invocation.js";
+import { AGENTSEA_CLI } from "../shared/cli-invocation.js";
 import { getPackagesForTier, NODE_INSTALL_CMD, needsBun, needsNode } from "../shared/cloud-init.js";
 import { getUserHome } from "../shared/paths.js";
 import { asyncTryCatch, tryCatch } from "../shared/result.js";
@@ -1135,9 +1135,9 @@ export async function interactiveSession(cmd: string): Promise<number> {
   logWarn(`  ${DASHBOARD_URL}`);
   logWarn("");
   logInfo("To delete from CLI:");
-  logInfo(`  ${GRID_SPAWN_CLI} delete`);
+  logInfo(`  ${AGENTSEA_CLI} delete`);
   logInfo("To reconnect:");
-  logInfo(`  ${GRID_SPAWN_CLI} last`);
+  logInfo(`  ${AGENTSEA_CLI} last`);
   logInfo(`  or: gcloud compute ssh ${_state.instanceName} --zone=${_state.zone} --project=${_state.project}`);
 
   return exitCode;

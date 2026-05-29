@@ -4,7 +4,7 @@
 // Never sends command args, file paths, or user prompt content.
 // Events are sent immediately — no batching, no lost events on process.exit().
 
-import { isString } from "@grid-spawn/sdk";
+import { isString } from "@agentsea/sdk";
 import { getInstallId } from "./install-id.js";
 import { POSTHOG_BATCH_INGEST_URL, POSTHOG_PROJECT_API_KEY } from "./posthog-config.js";
 import { asyncTryCatch } from "./result.js";

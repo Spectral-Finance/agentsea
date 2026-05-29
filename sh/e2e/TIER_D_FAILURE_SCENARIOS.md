@@ -6,7 +6,7 @@ Manual experiments to validate behavior when a single-agent deployment breaks or
 
 **Teardown helper:** After any partial or failed run, destroy orphaned droplets via the DigitalOcean control panel, or use:
 
-`grid-spawn delete --name <spawn-name> --yes` (non-interactive; see `grid-spawn help delete`).
+`agentsea delete --name <spawn-name> --yes` (non-interactive; see `agentsea help delete`).
 
 ---
 
@@ -14,8 +14,8 @@ Manual experiments to validate behavior when a single-agent deployment breaks or
 
 | Item | Detail |
 |------|--------|
-| **Induce** | Start `grid-spawn <agent> digitalocean --headless --verbose`, then `pkill -9 -f "bun.*index.ts"` (or kill the PID from `ps`) during install or SSH setup. |
-| **Expect** | Process dies; droplet may already exist with partial setup. Stale `~/.config/grid-spawn/runs/headless-provision.lock` may block later runs — see [lib/provision.sh](lib/provision.sh) (holder PID cleanup). |
+| **Induce** | Start `agentsea <agent> digitalocean --headless --verbose`, then `pkill -9 -f "bun.*index.ts"` (or kill the PID from `ps`) during install or SSH setup. |
+| **Expect** | Process dies; droplet may already exist with partial setup. Stale `~/.config/agentsea/runs/headless-provision.lock` may block later runs — see [lib/provision.sh](lib/provision.sh) (holder PID cleanup). |
 | **Verify** | Next headless run either succeeds after lock cleanup or fails with a clear error; document any hung remote state. |
 | **Cleanup** | List DO droplets; delete name matching `SPAWN_NAME` / spawn prefix used in logs. |
 

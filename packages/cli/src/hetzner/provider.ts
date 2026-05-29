@@ -38,7 +38,7 @@ export async function buildHetznerResumeOrchestrator(record: SpawnRecord): Promi
     async createServer() {
       return vmConn;
     },
-    getServerName: async () => conn.server_name ?? "grid-spawn-resume",
+    getServerName: async () => conn.server_name ?? "agentsea-resume",
     async waitForReady() {
       await waitForCloudInit(ip);
     },

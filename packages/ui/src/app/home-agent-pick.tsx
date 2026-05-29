@@ -5,7 +5,7 @@ import { memo, useMemo, useState } from "react";
 
 import { GridRecipesLogo } from "./agent-logos";
 import type { HomeAgentVm } from "./landing-from-manifest";
-import { GRID_SPAWN_REQUEST_AGENT_MAILTO } from "./home-public-constants";
+import { AGENTSEA_REQUEST_AGENT_MAILTO } from "./home-public-constants";
 import styles from "./page.module.scss";
 
 export type HomeAgentPickProps = {
@@ -153,7 +153,7 @@ export const HomeAgentPick = memo(function HomeAgentPickComp({
       {filtered.length === 0 && (
         <p className={styles["searchEmpty"]} role="status">
           No agents match “{q.trim()}”.{" "}
-          <a href={GRID_SPAWN_REQUEST_AGENT_MAILTO} className={styles["inlineLink"]}>
+          <a href={AGENTSEA_REQUEST_AGENT_MAILTO} className={styles["inlineLink"]}>
             Request one
           </a>
           .
@@ -161,7 +161,7 @@ export const HomeAgentPick = memo(function HomeAgentPickComp({
       )}
 
       <p className={styles["band__foot"]}>
-        <a href={GRID_SPAWN_REQUEST_AGENT_MAILTO} className={styles["inlineLink"]}>
+        <a href={AGENTSEA_REQUEST_AGENT_MAILTO} className={styles["inlineLink"]}>
           Missing an agent? Request it here
         </a>
         .

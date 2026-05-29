@@ -6,7 +6,7 @@
 import { existsSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { GRID_SPAWN_CLI } from "./shared/cli-invocation.js";
+import { AGENTSEA_CLI } from "./shared/cli-invocation.js";
 // Allowlist pattern for agent and cloud identifiers
 // Only lowercase alphanumeric, hyphens, and underscores allowed
 const IDENTIFIER_PATTERN = /^[a-z0-9_-]+$/;
@@ -42,7 +42,7 @@ const CONNECTION_SENTINELS = [
  */
 export function validateIdentifier(identifier: string, fieldName: string): void {
   if (!identifier || identifier.trim() === "") {
-    const listCmd = fieldName.toLowerCase().includes("agent") ? `${GRID_SPAWN_CLI} agents` : `${GRID_SPAWN_CLI} clouds`;
+    const listCmd = fieldName.toLowerCase().includes("agent") ? `${AGENTSEA_CLI} agents` : `${AGENTSEA_CLI} clouds`;
     throw new Error(
       `${fieldName} is required but was not provided.\n\n` + `Run '${listCmd}' to see all available options.`,
     );
@@ -50,7 +50,7 @@ export function validateIdentifier(identifier: string, fieldName: string): void 
 
   // Check length constraints (prevent DoS via extremely long identifiers)
   if (identifier.length > 64) {
-    const listCmd = fieldName.toLowerCase().includes("agent") ? `${GRID_SPAWN_CLI} agents` : `${GRID_SPAWN_CLI} clouds`;
+    const listCmd = fieldName.toLowerCase().includes("agent") ? `${AGENTSEA_CLI} agents` : `${AGENTSEA_CLI} clouds`;
     const entityType = fieldName.toLowerCase().includes("agent") ? "agent" : "cloud provider";
     throw new Error(
       `${fieldName} is too long (${identifier.length} characters, maximum is 64).\n\n` +
@@ -62,7 +62,7 @@ export function validateIdentifier(identifier: string, fieldName: string): void 
 
   // Allowlist validation: only safe characters
   if (!IDENTIFIER_PATTERN.test(identifier)) {
-    const listCmd = fieldName.toLowerCase().includes("agent") ? `${GRID_SPAWN_CLI} agents` : `${GRID_SPAWN_CLI} clouds`;
+    const listCmd = fieldName.toLowerCase().includes("agent") ? `${AGENTSEA_CLI} agents` : `${AGENTSEA_CLI} clouds`;
     const entityType = fieldName.toLowerCase().includes("agent") ? "agent" : "cloud provider";
     throw new Error(
       `Invalid ${fieldName.toLowerCase()}: "${identifier}"\n\n` +
@@ -80,7 +80,7 @@ export function validateIdentifier(identifier: string, fieldName: string): void 
 
   // Prevent path traversal patterns (defense in depth)
   if (identifier.includes("..") || identifier.includes("/") || identifier.includes("\\")) {
-    const listCmd = fieldName.toLowerCase().includes("agent") ? `${GRID_SPAWN_CLI} agents` : `${GRID_SPAWN_CLI} clouds`;
+    const listCmd = fieldName.toLowerCase().includes("agent") ? `${AGENTSEA_CLI} agents` : `${AGENTSEA_CLI} clouds`;
     const entityType = fieldName.toLowerCase().includes("agent") ? "agent" : "cloud provider";
     throw new Error(
       `Invalid ${fieldName.toLowerCase()}: "${identifier}"\n\n` +
@@ -109,7 +109,7 @@ export function validateScriptContent(script: string): void {
         "This usually means the server returned an error instead of the script.\n\n" +
         "How to fix:\n" +
         "  1. Check your internet connection\n" +
-        `  2. Verify the combination exists: ${GRID_SPAWN_CLI} matrix\n` +
+        `  2. Verify the combination exists: ${AGENTSEA_CLI} matrix\n` +
         "  3. Wait a moment and try again (the server may be temporarily unavailable)",
     );
   }
@@ -143,7 +143,7 @@ export function validateScriptContent(script: string): void {
         "Security check failed: the downloaded script contains a dangerous pattern.\n\n" +
           `Pattern detected: ${description}\n\n` +
           "This is unexpected and may indicate the file was tampered with or corrupted.\n" +
-          "Please report this at: https://github.com/Spectral-Finance/grid-spawn/issues",
+          "Please report this at: https://github.com/Spectral-Finance/agentsea/issues",
       );
     }
   }
@@ -158,9 +158,9 @@ export function validateScriptContent(script: string): void {
         "  • The script file hasn't been published yet (even though it appears in the matrix)\n\n" +
         "How to fix:\n" +
         "  1. Check your internet connection and try again\n" +
-        `  2. Run '${GRID_SPAWN_CLI} matrix' to verify the combination is marked as implemented\n` +
+        `  2. Run '${AGENTSEA_CLI} matrix' to verify the combination is marked as implemented\n` +
         "  3. Wait a few moments (the script may be deploying) and retry\n" +
-        "  4. If the issue persists, report it: https://github.com/Spectral-Finance/grid-spawn/issues",
+        "  4. If the issue persists, report it: https://github.com/Spectral-Finance/agentsea/issues",
     );
   }
 }
@@ -204,7 +204,7 @@ export function validateConnectionIP(ip: string): void {
         `Invalid connection IP address: "${ip}"\n\n` +
           "IPv4 addresses must have octets in the range 0-255.\n\n" +
           "Your spawn history file may be corrupted or tampered with.\n" +
-          `To fix: run '${GRID_SPAWN_CLI} list --clear' to reset history`,
+          `To fix: run '${AGENTSEA_CLI} list --clear' to reset history`,
       );
     }
     return;
@@ -224,7 +224,7 @@ export function validateConnectionIP(ip: string): void {
     `Invalid connection IP address: "${ip}"\n\n` +
       `Expected a valid IPv4 or IPv6 address, hostname, or one of: ${CONNECTION_SENTINELS.join(", ")}\n\n` +
       "Your spawn history file may be corrupted or tampered with.\n" +
-      `To fix: run '${GRID_SPAWN_CLI} list --clear' to reset history`,
+      `To fix: run '${AGENTSEA_CLI} list --clear' to reset history`,
   );
 }
 
@@ -247,7 +247,7 @@ export function validateUsername(username: string): void {
     throw new Error(
       `Username is too long: "${username}" (${username.length} characters, maximum is 32)\n\n` +
         "Your spawn history file may be corrupted or tampered with.\n" +
-        `To fix: run '${GRID_SPAWN_CLI} list --clear' to reset history`,
+        `To fix: run '${AGENTSEA_CLI} list --clear' to reset history`,
     );
   }
 
@@ -260,7 +260,7 @@ export function validateUsername(username: string): void {
         "  • Optionally end with $ (for system accounts)\n\n" +
         "Examples of valid usernames: root, ubuntu, user-123, _system\n\n" +
         "Your spawn history file may be corrupted or tampered with.\n" +
-        `To fix: run '${GRID_SPAWN_CLI} list --clear' to reset history`,
+        `To fix: run '${AGENTSEA_CLI} list --clear' to reset history`,
     );
   }
 }
@@ -284,7 +284,7 @@ export function validateServerIdentifier(id: string): void {
     throw new Error(
       `Server identifier is too long: "${id}" (${id.length} characters, maximum is 128)\n\n` +
         "Your spawn history file may be corrupted or tampered with.\n" +
-        `To fix: run '${GRID_SPAWN_CLI} list --clear' to reset history`,
+        `To fix: run '${AGENTSEA_CLI} list --clear' to reset history`,
     );
   }
 
@@ -294,7 +294,7 @@ export function validateServerIdentifier(id: string): void {
       `Invalid server identifier: "${id}"\n\n` +
         "Server identifiers cannot contain path-like patterns (/, \\, ..)\n\n" +
         "Your spawn history file may be corrupted or tampered with.\n" +
-        `To fix: run '${GRID_SPAWN_CLI} list --clear' to reset history`,
+        `To fix: run '${AGENTSEA_CLI} list --clear' to reset history`,
     );
   }
 
@@ -308,7 +308,7 @@ export function validateServerIdentifier(id: string): void {
         "  • Letters and digits (a-z, A-Z, 0-9)\n" +
         "  • Hyphens (-), underscores (_), dots (.)\n\n" +
         "Your spawn history file may be corrupted or tampered with.\n" +
-        `To fix: run '${GRID_SPAWN_CLI} list --clear' to reset history`,
+        `To fix: run '${AGENTSEA_CLI} list --clear' to reset history`,
     );
   }
 }
@@ -369,7 +369,7 @@ export function validateLaunchCmd(cmd: string): void {
     throw new Error(
       `Launch command is too long (${cmd.length} characters, maximum is 1024)\n\n` +
         "Your spawn history file may be corrupted or tampered with.\n" +
-        `To fix: run '${GRID_SPAWN_CLI} list --clear' to reset history`,
+        `To fix: run '${AGENTSEA_CLI} list --clear' to reset history`,
     );
   }
 
@@ -396,7 +396,7 @@ export function validateLaunchCmd(cmd: string): void {
           "  • source ~/.<rc-file> [2>/dev/null]\n" +
           "  • export PATH=<path>\n\n" +
           "Your spawn history file may be corrupted or tampered with.\n" +
-          `To fix: run '${GRID_SPAWN_CLI} list --clear' to reset history`,
+          `To fix: run '${AGENTSEA_CLI} list --clear' to reset history`,
       );
     }
   }
@@ -409,7 +409,7 @@ export function validateLaunchCmd(cmd: string): void {
         `Rejected segment: "${lastSegment}"\n\n` +
         "The final segment must be a simple binary name (e.g., 'claude', 'hermes').\n\n" +
         "Your spawn history file may be corrupted or tampered with.\n" +
-        `To fix: run '${GRID_SPAWN_CLI} list --clear' to reset history`,
+        `To fix: run '${AGENTSEA_CLI} list --clear' to reset history`,
     );
   }
 }
@@ -467,7 +467,7 @@ export function validateMetadataValue(value: string, fieldName: string): void {
     throw new Error(
       `${fieldName} is too long: "${value}" (${value.length} characters, maximum is 128)\n\n` +
         "Your spawn history file may be corrupted or tampered with.\n" +
-        `To fix: run '${GRID_SPAWN_CLI} list --clear' to reset history`,
+        `To fix: run '${AGENTSEA_CLI} list --clear' to reset history`,
     );
   }
 
@@ -477,7 +477,7 @@ export function validateMetadataValue(value: string, fieldName: string): void {
       `Invalid ${fieldName}: "${value}"\n\n` +
         `${fieldName} can only contain letters, digits, hyphens, underscores, and dots.\n\n` +
         "Your spawn history file may be corrupted or tampered with.\n" +
-        `To fix: run '${GRID_SPAWN_CLI} list --clear' to reset history`,
+        `To fix: run '${AGENTSEA_CLI} list --clear' to reset history`,
     );
   }
 }
@@ -502,7 +502,7 @@ export function validateTunnelUrl(url: string): void {
     throw new Error(
       `Tunnel URL template is too long (${url.length} characters, maximum is 2048)\n\n` +
         "Your spawn history file may be corrupted or tampered with.\n" +
-        `To fix: run '${GRID_SPAWN_CLI} list --clear' to reset history`,
+        `To fix: run '${AGENTSEA_CLI} list --clear' to reset history`,
     );
   }
 
@@ -516,7 +516,7 @@ export function validateTunnelUrl(url: string): void {
         "Tunnel URLs must start with http://localhost: or http://127.0.0.1:\n" +
         "followed by a port number or __PORT__ placeholder.\n\n" +
         "Your spawn history file may be corrupted or tampered with.\n" +
-        `To fix: run '${GRID_SPAWN_CLI} list --clear' to reset history`,
+        `To fix: run '${AGENTSEA_CLI} list --clear' to reset history`,
     );
   }
 }
@@ -540,7 +540,7 @@ export function validateTunnelPort(port: string): void {
       `Invalid tunnel port: "${port}"\n\n` +
         "Tunnel port must be a numeric value between 1 and 65535.\n\n" +
         "Your spawn history file may be corrupted or tampered with.\n" +
-        `To fix: run '${GRID_SPAWN_CLI} list --clear' to reset history`,
+        `To fix: run '${AGENTSEA_CLI} list --clear' to reset history`,
     );
   }
 
@@ -549,7 +549,7 @@ export function validateTunnelPort(port: string): void {
     throw new Error(
       `Invalid tunnel port: ${num} (must be between 1 and 65535)\n\n` +
         "Your spawn history file may be corrupted or tampered with.\n" +
-        `To fix: run '${GRID_SPAWN_CLI} list --clear' to reset history`,
+        `To fix: run '${AGENTSEA_CLI} list --clear' to reset history`,
     );
   }
 }
@@ -641,7 +641,7 @@ export function validatePromptFilePath(filePath: string): void {
     throw new Error(
       `Prompt file path is required when using --prompt-file.\n\n` +
         `Example:\n` +
-        `  ${GRID_SPAWN_CLI} <agent> <cloud> --prompt-file instructions.txt`,
+        `  ${AGENTSEA_CLI} <agent> <cloud> --prompt-file instructions.txt`,
     );
   }
 
@@ -669,7 +669,7 @@ export function validatePromptFilePath(filePath: string): void {
           "Prompt contents are sent to the agent and may be logged or stored remotely.\n\n" +
           "For security, use a plain text file instead:\n" +
           `  1. Create a new file: echo "Your instructions here" > prompt.txt\n` +
-          `  2. Use it: ${GRID_SPAWN_CLI} <agent> <cloud> --prompt-file prompt.txt`,
+          `  2. Use it: ${AGENTSEA_CLI} <agent> <cloud> --prompt-file prompt.txt`,
       );
     }
   }
@@ -689,7 +689,7 @@ export function validatePromptFilePath(filePath: string): void {
             "Prompt contents are sent to the agent and may be logged or stored remotely.\n\n" +
             "For security, use a plain text file instead:\n" +
             `  1. Create a new file: echo "Your instructions here" > prompt.txt\n` +
-            `  2. Use it: ${GRID_SPAWN_CLI} <agent> <cloud> --prompt-file prompt.txt`,
+            `  2. Use it: ${AGENTSEA_CLI} <agent> <cloud> --prompt-file prompt.txt`,
         );
       }
     }
@@ -750,9 +750,9 @@ export function validatePrompt(prompt: string): void {
     throw new Error(
       "Prompt is required but was not provided.\n\n" +
         "Provide a prompt with --prompt:\n" +
-        `  ${GRID_SPAWN_CLI} <agent> <cloud> --prompt "Your task here"\n\n` +
+        `  ${AGENTSEA_CLI} <agent> <cloud> --prompt "Your task here"\n\n` +
         "Or use a file:\n" +
-        `  ${GRID_SPAWN_CLI} <agent> <cloud> --prompt-file prompt.txt`,
+        `  ${AGENTSEA_CLI} <agent> <cloud> --prompt-file prompt.txt`,
     );
   }
 
@@ -764,7 +764,7 @@ export function validatePrompt(prompt: string): void {
       `Your prompt is too long (${lengthKB}KB, maximum is 10KB).\n\n` +
         "For longer instructions, save them to a file instead:\n\n" +
         `  1. Save your prompt: echo "Your long instructions..." > instructions.txt\n` +
-        `  2. Use the file: ${GRID_SPAWN_CLI} <agent> <cloud> --prompt-file instructions.txt\n\n` +
+        `  2. Use the file: ${AGENTSEA_CLI} <agent> <cloud> --prompt-file instructions.txt\n\n` +
         "This also makes it easier to edit and reuse your prompts.",
     );
   }

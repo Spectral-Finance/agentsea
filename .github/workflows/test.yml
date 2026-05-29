@@ -28,7 +28,7 @@ jobs:
         run: npm run typecheck
 
       - name: Lint (UI)
-        run: npm run lint --workspace=@grid-spawn/ui
+        run: npm run lint --workspace=@agentsea/ui
 
       - name: Run workspace tests
         run: npm test

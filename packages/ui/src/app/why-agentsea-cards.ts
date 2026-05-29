@@ -1,5 +1,5 @@
 /**
- * Single source of truth for the "Why Grid Spawn?" feature cards rendered
+ * Single source of truth for the "Why AgentSea?" feature cards rendered
  * on both `/` and `/cli` (launch view). Update copy here; both surfaces
  * pick it up.
  */
@@ -8,7 +8,7 @@ export interface WhyCard {
   body: string;
 }
 
-export const WHY_GRID_SPAWN_CARDS: WhyCard[] = [
+export const WHY_AGENTSEA_CARDS: WhyCard[] = [
   {
     title: "Agent-agnostic",
     body: "Start with OpenClaw, Codex, or OpenCode, and switch with a single command as more agents land.",
@@ -19,7 +19,7 @@ export const WHY_GRID_SPAWN_CARDS: WhyCard[] = [
   },
   {
     title: "Fully sandboxed",
-    body: "Each spawn is an isolated VM and credential boundary — no cross-talk between sessions.",
+    body: "Each agent runs in an isolated VM and credential boundary — no cross-talk between sessions.",
   },
   {
     title: "The Grid inference",

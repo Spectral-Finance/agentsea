@@ -41,14 +41,14 @@ describe("paths", () => {
   });
 
   describe("getSpawnDir", () => {
-    it("returns ~/.config/grid-spawn by default", () => {
+    it("returns ~/.config/agentsea by default", () => {
       delete process.env.SPAWN_HOME;
       delete process.env.GRID_SPAWN_HOME;
-      expect(getSpawnDir()).toBe(join(getUserHome(), ".config", "grid-spawn"));
+      expect(getSpawnDir()).toBe(join(getUserHome(), ".config", "agentsea"));
     });
 
     it("uses GRID_SPAWN_HOME when set to valid absolute path", () => {
-      const testPath = join(getUserHome(), ".custom-grid-spawn");
+      const testPath = join(getUserHome(), ".custom-agentsea");
       delete process.env.SPAWN_HOME;
       process.env.GRID_SPAWN_HOME = testPath;
       expect(getSpawnDir()).toBe(testPath);
@@ -82,7 +82,7 @@ describe("paths", () => {
 
     it("rejects GRID_SPAWN_HOME outside home directory", () => {
       delete process.env.SPAWN_HOME;
-      process.env.GRID_SPAWN_HOME = "/tmp/grid-spawn";
+      process.env.GRID_SPAWN_HOME = "/tmp/agentsea";
       expect(() => getSpawnDir()).toThrow("must be within your home directory");
     });
 
@@ -97,42 +97,51 @@ describe("paths", () => {
     it("returns history.json inside spawn dir", () => {
       delete process.env.SPAWN_HOME;
       delete process.env.GRID_SPAWN_HOME;
-      expect(getHistoryPath()).toBe(join(getUserHome(), ".config", "grid-spawn", "history.json"));
+      expect(getHistoryPath()).toBe(join(getUserHome(), ".config", "agentsea", "history.json"));
     });
   });
 
   describe("getSpawnCloudConfigPath", () => {
-    it("returns ~/.config/grid-spawn/{cloud}.json", () => {
-      expect(getSpawnCloudConfigPath("aws")).toBe(join(getUserHome(), ".config", "grid-spawn", "aws.json"));
+    it("returns ~/.config/agentsea/{cloud}.json", () => {
+      delete process.env.SPAWN_HOME;
+      delete process.env.GRID_SPAWN_HOME;
+      delete process.env.AGENTSEA_HOME;
+      expect(getSpawnCloudConfigPath("aws")).toBe(join(getUserHome(), ".config", "agentsea", "aws.json"));
     });
 
     it("works for different cloud names", () => {
-      expect(getSpawnCloudConfigPath("hetzner")).toBe(join(getUserHome(), ".config", "grid-spawn", "hetzner.json"));
+      delete process.env.SPAWN_HOME;
+      delete process.env.GRID_SPAWN_HOME;
+      delete process.env.AGENTSEA_HOME;
+      expect(getSpawnCloudConfigPath("hetzner")).toBe(join(getUserHome(), ".config", "agentsea", "hetzner.json"));
     });
   });
 
   describe("getCacheDir", () => {
-    it("returns XDG_CACHE_HOME/grid-spawn when XDG_CACHE_HOME is set", () => {
+    it("returns XDG_CACHE_HOME/agentsea when XDG_CACHE_HOME is set", () => {
       process.env.XDG_CACHE_HOME = "/custom/cache";
-      expect(getCacheDir()).toBe("/custom/cache/grid-spawn");
+      expect(getCacheDir()).toBe("/custom/cache/agentsea");
     });
 
-    it("falls back to ~/.cache/grid-spawn", () => {
+    it("falls back to ~/.cache/agentsea", () => {
       delete process.env.XDG_CACHE_HOME;
-      expect(getCacheDir()).toBe(join(getUserHome(), ".cache", "grid-spawn"));
+      expect(getCacheDir()).toBe(join(getUserHome(), ".cache", "agentsea"));
     });
   });
 
   describe("getCacheFile", () => {
     it("returns manifest.json inside cache dir", () => {
       delete process.env.XDG_CACHE_HOME;
-      expect(getCacheFile()).toBe(join(getUserHome(), ".cache", "grid-spawn", "manifest.json"));
+      expect(getCacheFile()).toBe(join(getUserHome(), ".cache", "agentsea", "manifest.json"));
     });
   });
 
   describe("getUpdateFailedPath", () => {
-    it("returns ~/.config/grid-spawn/.update-failed", () => {
-      expect(getUpdateFailedPath()).toBe(join(getUserHome(), ".config", "grid-spawn", ".update-failed"));
+    it("returns ~/.config/agentsea/.update-failed", () => {
+      delete process.env.SPAWN_HOME;
+      delete process.env.GRID_SPAWN_HOME;
+      delete process.env.AGENTSEA_HOME;
+      expect(getUpdateFailedPath()).toBe(join(getUserHome(), ".config", "agentsea", ".update-failed"));
     });
   });
 

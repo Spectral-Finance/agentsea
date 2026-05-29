@@ -3,7 +3,7 @@ import type { Manifest } from "../manifest.js";
 import type { CloudRunner } from "../shared/agent-setup.js";
 
 import * as p from "@clack/prompts";
-import { getErrorMessage, isString } from "@grid-spawn/sdk";
+import { getErrorMessage, isString } from "@agentsea/sdk";
 import pc from "picocolors";
 import { getActiveServers } from "../history.js";
 import { loadManifest } from "../manifest.js";
@@ -16,7 +16,7 @@ import { injectEnvVarsToRunner } from "../shared/orchestrate.js";
 import { getHistoryPath } from "../shared/paths.js";
 import { asyncTryCatch, tryCatch } from "../shared/result.js";
 import { ensureSshKeys, getSshKeyOpts } from "../shared/ssh-keys.js";
-import { GRID_SPAWN_CLI } from "../shared/cli-invocation.js";
+import { AGENTSEA_CLI } from "../shared/cli-invocation.js";
 import { makeSshRunner } from "../shared/ssh-runner.js";
 import { logWarn, withRetry } from "../shared/ui.js";
 import { buildRecordLabel, buildRecordSubtitle } from "./list.js";
@@ -62,7 +62,7 @@ export async function fixSpawn(record: SpawnRecord, manifest: Manifest | null, o
     return;
   }
   if (conn.ip === "sprite-console") {
-    p.log.error(`Cannot fix: Sprite console connections are not supported by '${GRID_SPAWN_CLI} fix'.`);
+    p.log.error(`Cannot fix: Sprite console connections are not supported by '${AGENTSEA_CLI} fix'.`);
     p.log.info("SSH directly into the VM and re-run the setup script manually.");
     return;
   }
@@ -163,7 +163,7 @@ export async function fixSpawn(record: SpawnRecord, manifest: Manifest | null, o
     await ensureDaytonaAutoUpdate(conn, record.agent);
 
     p.log.success(`${pc.bold(agentDisplayName)} fixed successfully!`);
-    p.log.info(`Reconnect: ${pc.cyan(`${GRID_SPAWN_CLI} last`)}`);
+    p.log.info(`Reconnect: ${pc.cyan(`${AGENTSEA_CLI} last`)}`);
     return;
   }
 
@@ -240,7 +240,7 @@ export async function fixSpawn(record: SpawnRecord, manifest: Manifest | null, o
 
   console.log();
   p.log.success(`${pc.bold(agentDisplayName)} fixed successfully!`);
-  p.log.info(`Reconnect: ${pc.cyan(`${GRID_SPAWN_CLI} last`)}`);
+  p.log.info(`Reconnect: ${pc.cyan(`${AGENTSEA_CLI} last`)}`);
 }
 
 export async function cmdFix(spawnId?: string, options?: FixOptions): Promise<void> {
@@ -248,7 +248,7 @@ export async function cmdFix(spawnId?: string, options?: FixOptions): Promise<vo
 
   if (servers.length === 0) {
     p.log.info("No active spawns to fix.");
-    p.log.info(`Run ${pc.cyan(`${GRID_SPAWN_CLI} <agent> <cloud>`)} to create a spawn first.`);
+    p.log.info(`Run ${pc.cyan(`${AGENTSEA_CLI} <agent> <cloud>`)} to create a spawn first.`);
     return;
   }
 
@@ -260,7 +260,7 @@ export async function cmdFix(spawnId?: string, options?: FixOptions): Promise<vo
     const record = servers.find((r) => r.id === spawnId || r.name === spawnId || r.connection?.server_name === spawnId);
     if (!record) {
       p.log.error(`Spawn not found: ${pc.bold(spawnId)}`);
-      p.log.info(`Run ${pc.cyan(`${GRID_SPAWN_CLI} list`)} to see your active spawns.`);
+      p.log.info(`Run ${pc.cyan(`${AGENTSEA_CLI} list`)} to see your active spawns.`);
       process.exit(1);
     }
     await fixSpawn(record, manifest, options);
@@ -275,8 +275,8 @@ export async function cmdFix(spawnId?: string, options?: FixOptions): Promise<vo
 
   // Non-interactive fallback (multiple servers require picking)
   if (!isInteractiveTTY()) {
-    p.log.error(`${GRID_SPAWN_CLI} fix requires an interactive terminal or a spawn name/ID.`);
-    p.log.info(`Usage: ${pc.cyan(`${GRID_SPAWN_CLI} fix <spawn-id>`)}`);
+    p.log.error(`${AGENTSEA_CLI} fix requires an interactive terminal or a spawn name/ID.`);
+    p.log.info(`Usage: ${pc.cyan(`${AGENTSEA_CLI} fix <spawn-id>`)}`);
     process.exit(1);
   }
 

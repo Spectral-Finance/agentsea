@@ -4,12 +4,12 @@
 
 import type { CloudRunner } from "./agent-setup.js";
 
-import { getErrorMessage } from "@grid-spawn/sdk";
+import { getErrorMessage } from "@agentsea/sdk";
 import * as v from "valibot";
 import { asyncTryCatch } from "./result.js";
 import { logDebug, logInfo, logStep, logWarn } from "./ui.js";
 
-const REPO = "Spectral-Finance/grid-spawn";
+const REPO = "Spectral-Finance/agentsea";
 
 /** Schema for a single GitHub Release asset. */
 const AssetSchema = v.object({

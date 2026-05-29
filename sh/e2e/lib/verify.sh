@@ -212,7 +212,7 @@ _codex_ensure_proxy() {
         nohup /usr/local/bin/codex-litellm-wrapper >> /tmp/codex-litellm.log 2>&1 < /dev/null & \
       fi; \
     else \
-      echo 'codex-litellm-wrapper missing — spawn via grid-spawn codex first' >&2; exit 1; \
+      echo 'codex-litellm-wrapper missing — spawn via agentsea codex first' >&2; exit 1; \
     fi; \
     elapsed=0; while [ \$elapsed -lt 120 ]; do \
       if _codex_proxy_up; then echo 'Codex proxy started'; exit 0; fi; \

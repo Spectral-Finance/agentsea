@@ -1,4 +1,4 @@
-/** Manifest schema (Grid Spawn–compatible manifest shape) used by `@grid-spawn/cli` + marketing UI. */
+/** Manifest schema (AgentSea–compatible manifest shape) used by `@agentsea/cli` + marketing UI. */
 
 export interface AgentDef {
   name: string;

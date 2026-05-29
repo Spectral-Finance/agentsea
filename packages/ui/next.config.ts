@@ -11,7 +11,7 @@ const repoRoot = join(__dirname, "../../");
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   distDir,
-  // Load `.env*` from monorepo root so GRID_SPAWN_ROOT / overrides match CLI behaviour.
+  // Load `.env*` from monorepo root so AGENTSEA_ROOT / overrides match CLI behaviour.
   envDir: repoRoot,
   // Pin the workspace root so Next does not climb up to the spectral parent.
   outputFileTracingRoot: repoRoot,
@@ -22,7 +22,7 @@ const nextConfig: NextConfig = {
     silenceDeprecations: ["legacy-js-api", "import", "slash-div", "global-builtin"],
   },
   // Allow importing from sibling workspace packages without transpilation issues.
-  transpilePackages: ["@grid-spawn/sdk"],
+  transpilePackages: ["@agentsea/sdk"],
   // Webpack’s filesystem pack cache can reference missing chunks after interrupted
   // compiles; use in-memory cache in dev so routes don’t 404 while files are still compiling.
   webpack: (config, { dev }) => {

@@ -11,7 +11,7 @@ import { generateSpawnId, saveSpawnRecord } from "../history.js";
 import { agentKeys, cloudKeys, loadManifest } from "../manifest.js";
 import { validateConnectionIP, validateUsername } from "../security.js";
 import { asyncTryCatch, tryCatch } from "../shared/result.js";
-import { GRID_SPAWN_CLI } from "../shared/cli-invocation.js";
+import { AGENTSEA_CLI } from "../shared/cli-invocation.js";
 import { SSH_BASE_OPTS, SSH_INTERACTIVE_OPTS, spawnInteractive } from "../shared/ssh.js";
 import { ensureSshKeys, getSshKeyOpts } from "../shared/ssh-keys.js";
 import { getErrorMessage, handleCancel, isInteractiveTTY } from "./shared.js";
@@ -219,9 +219,9 @@ export async function cmdLink(args: string[], options?: LinkOptions): Promise<vo
   const ip = parseIpArg(remaining);
 
   if (!ip) {
-    console.error(pc.red(`Error: ${GRID_SPAWN_CLI} link requires an IP address`));
-    console.error(`\nUsage: ${pc.cyan(`${GRID_SPAWN_CLI} link <ip>`)}`);
-    console.error(`       ${pc.cyan(`${GRID_SPAWN_CLI} link 152.32.1.1 --agent claude --cloud hetzner`)}`);
+    console.error(pc.red(`Error: ${AGENTSEA_CLI} link requires an IP address`));
+    console.error(`\nUsage: ${pc.cyan(`${AGENTSEA_CLI} link <ip>`)}`);
+    console.error(`       ${pc.cyan(`${AGENTSEA_CLI} link 152.32.1.1 --agent claude --cloud hetzner`)}`);
     process.exit(1);
   }
 
@@ -233,7 +233,7 @@ export async function cmdLink(args: string[], options?: LinkOptions): Promise<vo
     process.exit(1);
   }
 
-  p.intro(`${pc.bold(`${GRID_SPAWN_CLI} link`)} — reconnect an existing deployment`);
+  p.intro(`${pc.bold(`${AGENTSEA_CLI} link`)} — reconnect an existing deployment`);
 
   // ── Determine SSH user ─────────────────────────────────────────────────────
   let sshUser = userFlag ?? "root";
@@ -311,7 +311,7 @@ export async function cmdLink(args: string[], options?: LinkOptions): Promise<vo
   if (!detectedAgent) {
     if (!isInteractiveTTY()) {
       p.log.error("Could not auto-detect agent. Use --agent <agent> to specify it.");
-      p.log.info(`Example: ${pc.cyan(`${GRID_SPAWN_CLI} link ${ip} --agent claude`)}`);
+      p.log.info(`Example: ${pc.cyan(`${AGENTSEA_CLI} link ${ip} --agent claude`)}`);
       if (manifest) {
         const agents = agentKeys(manifest);
         p.log.info(`Available agents: ${agents.join(", ")}`);
@@ -350,7 +350,7 @@ export async function cmdLink(args: string[], options?: LinkOptions): Promise<vo
   if (!detectedCloud) {
     if (!isInteractiveTTY()) {
       p.log.error("Could not auto-detect cloud provider. Use --cloud <cloud> to specify it.");
-      p.log.info(`Example: ${pc.cyan(`${GRID_SPAWN_CLI} link ${ip} --cloud hetzner`)}`);
+      p.log.info(`Example: ${pc.cyan(`${AGENTSEA_CLI} link ${ip} --cloud hetzner`)}`);
       if (manifest) {
         const clouds = cloudKeys(manifest).filter((c) => c !== "local");
         p.log.info(`Available clouds: ${clouds.join(", ")}`);
@@ -431,7 +431,7 @@ export async function cmdLink(args: string[], options?: LinkOptions): Promise<vo
     process.exit(1);
   }
 
-  p.log.success(`Deployment linked! Run ${pc.cyan(`${GRID_SPAWN_CLI} list`)} to see it.`);
+  p.log.success(`Deployment linked! Run ${pc.cyan(`${AGENTSEA_CLI} list`)} to see it.`);
 
   // ── Offer to connect immediately ───────────────────────────────────────────
   if (isInteractiveTTY()) {
@@ -456,5 +456,5 @@ export async function cmdLink(args: string[], options?: LinkOptions): Promise<vo
     }
   }
 
-  p.outro(`Linked as ${spawnName}. Run ${pc.cyan(`${GRID_SPAWN_CLI} list`)} to manage it.`);
+  p.outro(`Linked as ${spawnName}. Run ${pc.cyan(`${AGENTSEA_CLI} list`)} to manage it.`);
 }

@@ -27,7 +27,7 @@
           "bypassPermissionsModeAccepted": true
         }
       },
-      "icon": "https://raw.githubusercontent.com/Spectral-Finance/grid-spawn/main/assets/agents/claude.png",
+      "icon": "https://raw.githubusercontent.com/Spectral-Finance/agentsea/main/assets/agents/claude.png",
       "featured_cloud": [
         "digitalocean",
         "sprite"
@@ -67,7 +67,7 @@
           "default": "\u006f\u0070\u0065\u006e\u0072\u006f\u0075\u0074\u0065\u0072/auto"
         }
       },
-      "icon": "https://raw.githubusercontent.com/Spectral-Finance/grid-spawn/main/assets/agents/openclaw.png",
+      "icon": "https://raw.githubusercontent.com/Spectral-Finance/agentsea/main/assets/agents/openclaw.png",
       "featured_cloud": [
         "digitalocean",
         "sprite"
@@ -101,7 +101,7 @@
         "THEGRID_API_KEY": "${THEGRID_API_KEY}"
       },
       "notes": "Works with THEGRID_API_KEY and OPENAI_BASE_URL pointing at api.thegrid.ai/v1; default Codex model is selected from The Grid catalogue in interactive provisioning (MODEL_ID/--model/preferences.json override).",
-      "icon": "https://raw.githubusercontent.com/Spectral-Finance/grid-spawn/main/assets/agents/codex.png",
+      "icon": "https://raw.githubusercontent.com/Spectral-Finance/agentsea/main/assets/agents/codex.png",
       "featured_cloud": [
         "digitalocean",
         "sprite"
@@ -133,7 +133,7 @@
         "THEGRID_API_KEY": "${THEGRID_API_KEY}"
       },
       "notes": "Uses THEGRID_API_KEY. Go-based TUI using Bubble Tea.",
-      "icon": "https://raw.githubusercontent.com/Spectral-Finance/grid-spawn/main/assets/agents/opencode.png",
+      "icon": "https://raw.githubusercontent.com/Spectral-Finance/agentsea/main/assets/agents/opencode.png",
       "featured_cloud": [
         "digitalocean",
         "sprite"
@@ -167,7 +167,7 @@
         "THEGRID_API_KEY": "${THEGRID_API_KEY}"
       },
       "notes": "Kilo multi-provider CLI: KILO_PROVIDER_TYPE must match the routing slot used by other agents in this repo (see packages/cli/src/shared/vendor-routing.ts). KILO_OPEN_ROUTER_API_KEY is upstream env naming for the platform key.",
-      "icon": "https://raw.githubusercontent.com/Spectral-Finance/grid-spawn/main/assets/agents/kilocode.png",
+      "icon": "https://raw.githubusercontent.com/Spectral-Finance/agentsea/main/assets/agents/kilocode.png",
       "featured_cloud": [
         "digitalocean",
         "sprite"
@@ -201,8 +201,8 @@
         "OPENAI_BASE_URL": "http://127.0.0.1:4142/v1",
         "OPENAI_API_KEY": "${THEGRID_API_KEY}"
       },
-      "notes": "Uses THEGRID_API_KEY via ~/.hermes/config.yaml (provider: custom, base_url: local LiteLLM proxy on :4142 forwarding to api.thegrid.ai). Spawn writes ~/.hermes/.env + config.yaml + litellm.yaml — Hermes v0.14+ ignores OPENAI_* in ~/.spawnrc. The proxy follows The Grid's api→synapse 307 redirects (Hermes' HTTP client does not). Installs Python 3.11 via uv. Ships a local web dashboard (port 9119) for configuration, session monitoring, skill browsing, and gateway management — auto-exposed via SSH tunnel when run through Grid Spawn.",
-      "icon": "https://raw.githubusercontent.com/Spectral-Finance/grid-spawn/main/assets/agents/hermes.png",
+      "notes": "Uses THEGRID_API_KEY via ~/.hermes/config.yaml (provider: custom, base_url: local LiteLLM proxy on :4142 forwarding to api.thegrid.ai). Spawn writes ~/.hermes/.env + config.yaml + litellm.yaml — Hermes v0.14+ ignores OPENAI_* in ~/.spawnrc. The proxy follows The Grid's api→synapse 307 redirects (Hermes' HTTP client does not). Installs Python 3.11 via uv. Ships a local web dashboard (port 9119) for configuration, session monitoring, skill browsing, and gateway management — auto-exposed via SSH tunnel when run through AgentSea.",
+      "icon": "https://raw.githubusercontent.com/Spectral-Finance/agentsea/main/assets/agents/hermes.png",
       "featured_cloud": [
         "digitalocean",
         "sprite"
@@ -236,7 +236,7 @@
         "THEGRID_API_KEY": "${THEGRID_API_KEY}"
       },
       "notes": "Spawn writes ~/.junie/models/thegrid.json + ~/.junie/config.json (custom:thegrid) and starts a Junie-only LiteLLM proxy on :4143 — Junie cannot follow api.thegrid.ai → synapse 307 redirects directly.",
-      "icon": "https://raw.githubusercontent.com/Spectral-Finance/grid-spawn/main/assets/agents/junie.png",
+      "icon": "https://raw.githubusercontent.com/Spectral-Finance/agentsea/main/assets/agents/junie.png",
       "featured_cloud": [
         "digitalocean",
         "sprite"
@@ -269,7 +269,7 @@
         "THEGRID_API_KEY": "${THEGRID_API_KEY}"
       },
       "notes": "Uses THEGRID_API_KEY via ~/.pi/agent/models.json + settings.json (custom provider thegrid → api.thegrid.ai/v1). Spawn writes these during configure(); Pi does not read THEGRID_API_KEY without that config. CLI command is 'pi'. Also known as shittycodingagent.ai.",
-      "icon": "https://raw.githubusercontent.com/Spectral-Finance/grid-spawn/main/assets/agents/pi.png",
+      "icon": "https://raw.githubusercontent.com/Spectral-Finance/agentsea/main/assets/agents/pi.png",
       "featured_cloud": [
         "digitalocean",
         "sprite"
@@ -319,7 +319,7 @@
         }
       },
       "notes": "Routes Cursor traffic through The Grid via a local ConnectRPC-to-REST translation proxy (Caddy + Node.js). The proxy intercepts Cursor's proprietary protobuf protocol, translates to OpenAI-compatible API calls, and streams responses back. Binary installs to ~/.local/bin/agent.",
-      "icon": "https://raw.githubusercontent.com/Spectral-Finance/grid-spawn/main/assets/agents/cursor.png",
+      "icon": "https://raw.githubusercontent.com/Spectral-Finance/agentsea/main/assets/agents/cursor.png",
       "featured_cloud": [
         "digitalocean",
         "sprite"
@@ -357,7 +357,7 @@
         "OPENAI_BASE_URL": "https://api.thegrid.ai/v1"
       },
       "notes": "Web GUI that spawns Codex CLI (primary) via LiteLLM responses bridge to agent-standard on The Grid. Spawn installs @openai/codex, configures ~/.codex/config.toml, strips reasoning_effort for Grid compatibility, writes ~/.t3/userdata/settings.json, and starts the local LiteLLM proxy before launch. Requires Node.js 22+. Default port 3773.",
-      "icon": "https://raw.githubusercontent.com/Spectral-Finance/grid-spawn/main/assets/agents/t3code.png",
+      "icon": "https://raw.githubusercontent.com/Spectral-Finance/agentsea/main/assets/agents/t3code.png",
       "featured_cloud": [
         "digitalocean",
         "sprite"
@@ -386,7 +386,7 @@
       "name": "Local Machine",
       "price": "Free",
       "description": "Your computer — no account or payment needed",
-      "url": "https://github.com/Spectral-Finance/grid-spawn",
+      "url": "https://github.com/Spectral-Finance/agentsea",
       "type": "local",
       "auth": "none",
       "provision_method": "none (local execution)",
@@ -409,7 +409,7 @@
         "location": "nbg1",
         "image": "ubuntu-24.04"
       },
-      "icon": "https://raw.githubusercontent.com/Spectral-Finance/grid-spawn/main/assets/clouds/hetzner.png"
+      "icon": "https://raw.githubusercontent.com/Spectral-Finance/agentsea/main/assets/clouds/hetzner.png"
     },
     "aws": {
       "name": "AWS Lightsail",
@@ -427,7 +427,7 @@
         "blueprint": "ubuntu_24_04"
       },
       "notes": "Uses 'ubuntu' user instead of 'root'. Requires AWS CLI installed and configured.",
-      "icon": "https://raw.githubusercontent.com/Spectral-Finance/grid-spawn/main/assets/clouds/aws.png"
+      "icon": "https://raw.githubusercontent.com/Spectral-Finance/agentsea/main/assets/clouds/aws.png"
     },
     "digitalocean": {
       "name": "DigitalOcean",
@@ -444,7 +444,7 @@
         "region": "nyc3",
         "image": "ubuntu-24-04-x64"
       },
-      "icon": "https://raw.githubusercontent.com/Spectral-Finance/grid-spawn/main/assets/clouds/digitalocean.png"
+      "icon": "https://raw.githubusercontent.com/Spectral-Finance/agentsea/main/assets/clouds/digitalocean.png"
     },
     "gcp": {
       "name": "GCP Compute Engine",
@@ -462,7 +462,7 @@
         "image_family": "ubuntu-2404-lts-amd64"
       },
       "notes": "Uses current username for SSH. Requires gcloud CLI installed and configured.",
-      "icon": "https://raw.githubusercontent.com/Spectral-Finance/grid-spawn/main/assets/clouds/gcp.png"
+      "icon": "https://raw.githubusercontent.com/Spectral-Finance/agentsea/main/assets/clouds/gcp.png"
     },
     "daytona": {
       "name": "Daytona",
@@ -479,7 +479,7 @@
         "size": "small"
       },
       "notes": "Uses the Daytona SDK for sandbox lifecycle, file transfer, and signed preview URLs. SSH access tokens are minted on demand and never persisted.",
-      "icon": "https://raw.githubusercontent.com/Spectral-Finance/grid-spawn/main/assets/clouds/daytona.png"
+      "icon": "https://raw.githubusercontent.com/Spectral-Finance/agentsea/main/assets/clouds/daytona.png"
     },
     "sprite": {
       "name": "Sprite",
@@ -491,7 +491,7 @@
       "provision_method": "sprite create",
       "exec_method": "sprite exec",
       "interactive_method": "sprite exec -tty",
-      "icon": "https://raw.githubusercontent.com/Spectral-Finance/grid-spawn/main/assets/clouds/sprite.png"
+      "icon": "https://raw.githubusercontent.com/Spectral-Finance/agentsea/main/assets/clouds/sprite.png"
     }
   },
   "matrix": {

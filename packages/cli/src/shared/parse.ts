@@ -1,5 +1,5 @@
 import * as v from "valibot";
-import { parseJsonObj, parseJsonWith } from "@grid-spawn/sdk";
+import { parseJsonObj, parseJsonWith } from "@agentsea/sdk";
 
 export { parseJsonObj, parseJsonWith };
 

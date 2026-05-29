@@ -11,4 +11,4 @@ export {
   tryCatch,
   tryCatchIf,
   unwrapOr,
-} from "@grid-spawn/sdk";
+} from "@agentsea/sdk";

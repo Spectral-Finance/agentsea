@@ -1,6 +1,6 @@
-# One Command to Rule Them All: Why We Built Grid Spawn for the Agent Era
+# One Command to Rule Them All: Why We Built AgentSea for the Agent Era
 
-**TL;DR:** Grid Spawn is a CLI-first launcher that provisions AI coding agents on *your* cloud � DigitalOcean, Hetzner, AWS, GCP, Daytona, Sprite, or even your laptop � and wires them to [The Grid](https://thegrid.ai) for inference. No control plane. No vendor lock-in. Just `grid-spawn openclaw digitalocean` and you're in.
+**TL;DR:** AgentSea is a CLI-first launcher that provisions AI coding agents on *your* cloud � DigitalOcean, Hetzner, AWS, GCP, Daytona, Sprite, or even your laptop � and wires them to [The Grid](https://thegrid.ai) for inference. No control plane. No vendor lock-in. Just `agentsea openclaw digitalocean` and you're in.
 
 ---
 
@@ -21,15 +21,15 @@ You want to run an agent on a real machine � not your MacBook while you're on 
 
 So you do what every developer does: you write a bash script. Then another. Then a cloud-init file. Then you debug why Claude Code can't find Node on Ubuntu 24.04. Then you realize OpenClaw needs a gateway daemon. Then Junie can't follow HTTP 307 redirects. Then it's 2 AM and you're configuring LiteLLM proxies by hand.
 
-We got tired of that. So we built **Grid Spawn**.
+We got tired of that. So we built **AgentSea**.
 
 ---
 
-## What Is Grid Spawn?
+## What Is AgentSea?
 
-Grid Spawn is the fastest way to deploy Grid-backed AI agents on infrastructure **you control**.
+AgentSea is the fastest way to deploy Grid-backed AI agents on infrastructure **you control**.
 
-It's a single CLI � `grid-spawn` � that:
+It's a single CLI � `agentsea` � that:
 
 1. **Provisions** a VM on your chosen cloud provider
 2. **Bootstraps** the agent via cloud-init userdata scripts
@@ -41,17 +41,17 @@ That's it. No web UI. No proprietary control plane. No "sign up for our hosted a
 ```bash
 curl -fsSL https://spawn.thegrid.ai/cli/install.sh | bash
 
-grid-spawn                              # Interactive picker
-grid-spawn openclaw digitalocean         # Launch directly
-grid-spawn ls                            # List your spawns
-grid-spawn matrix                        # See what's supported
+agentsea                              # Interactive picker
+agentsea openclaw digitalocean         # Launch directly
+agentsea ls                            # List your spawns
+agentsea matrix                        # See what's supported
 ```
 
 ---
 
 ## The Architecture Is Deliberately Boring (That's the Point)
 
-Most "agent platforms" want to own your runtime. Grid Spawn doesn't.
+Most "agent platforms" want to own your runtime. AgentSea doesn't.
 
 The entire contract lives in a **static manifest** at the repo root � `manifest.json`. It declares:
 
@@ -59,7 +59,7 @@ The entire contract lives in a **static manifest** at the repo root � `manifes
 - **Clouds** � how to provision, auth requirements, default instance sizes
 - **Matrix** � which agent � cloud combinations are implemented
 
-The CLI reads that manifest, talks directly to **your** cloud APIs (DigitalOcean REST, Hetzner, AWS Lightsail, GCP, Daytona SDK, Sprite CLI), and tracks local history under `~/.config/grid-spawn/`.
+The CLI reads that manifest, talks directly to **your** cloud APIs (DigitalOcean REST, Hetzner, AWS Lightsail, GCP, Daytona SDK, Sprite CLI), and tracks local history under `~/.config/agentsea/`.
 
 No Spawn HTTP API. No multi-tenant control plane sitting between you and your VMs. Just a manifest, shell scripts, and cloud SDKs.
 
@@ -98,13 +98,13 @@ New agents get added to the manifest. The CLI picks them up automatically.
 | **Daytona** | Usage-based | Managed dev sandboxes with SDK access |
 | **Sprite** | Free tier | One-command managed servers |
 
-Every combination that works is marked `"implemented"` in the matrix. Run `grid-spawn matrix` to see the full grid � pun absolutely intended.
+Every combination that works is marked `"implemented"` in the matrix. Run `agentsea matrix` to see the full grid � pun absolutely intended.
 
 ---
 
 ## Under the Hood: Four Steps, Zero Magic
 
-When you run `grid-spawn claude digitalocean`, here's what happens:
+When you run `agentsea claude digitalocean`, here's what happens:
 
 **1. Provision**  
 The CLI authenticates to your cloud (via `DIGITALOCEAN_ACCESS_TOKEN`, `HCLOUD_TOKEN`, etc.) and creates a VM with cloud-init userdata.
@@ -118,15 +118,15 @@ The VM gets `THEGRID_API_KEY` and OpenAI-compatible base URLs pointing at `api.t
 **4. Run over SSH**  
 The CLI opens an interactive SSH session. You're in the agent's TTY. Full terminal support. Drive it like you would locally � except it's on an isolated VM in NYC3.
 
-For agents that need extra plumbing (Hermes needs a LiteLLM proxy, Cursor needs a ConnectRPC-to-REST translation layer, Junie needs redirect handling), Grid Spawn handles that during bootstrap. You don't configure it. You just spawn.
+For agents that need extra plumbing (Hermes needs a LiteLLM proxy, Cursor needs a ConnectRPC-to-REST translation layer, Junie needs redirect handling), AgentSea handles that during bootstrap. You don't configure it. You just spawn.
 
 ---
 
-## Why Grid Spawn?
+## Why AgentSea?
 
 ### Agent-agnostic
 
-The agent wars are real. Teams split across Claude, Codex, and OpenClaw. Grid Spawn doesn't pick sides. Start with whatever agent you use today; switch tomorrow without rewriting your infra.
+The agent wars are real. Teams split across Claude, Codex, and OpenClaw. AgentSea doesn't pick sides. Start with whatever agent you use today; switch tomorrow without rewriting your infra.
 
 ### Bring your own cloud
 
@@ -144,20 +144,20 @@ One API key. OpenAI-compatible endpoints. Model catalogue, budgets, and usage tr
 
 ## It's a Real CLI, Not a Demo
 
-Grid Spawn isn't a proof of concept with a `--help` flag and nothing else. It's built for daily use:
+AgentSea isn't a proof of concept with a `--help` flag and nothing else. It's built for daily use:
 
 ```bash
-grid-spawn claude hetzner --headless --output json   # CI/CD friendly
-grid-spawn codex gcp --prompt "Add tests for auth"   # Non-interactive runs
-grid-spawn claude sprite --fast                       # Parallel provisioning optimizations
-grid-spawn fix <spawn-id>                             # Recover a broken VM in-place
-grid-spawn resume                                     # Continue a failed provision
-grid-spawn tree                                       # Parent/child spawn relationships
-grid-spawn export <name>                              # Export a Claude spawn to GitHub
-grid-spawn cleanup digitalocean --dry-run             # Prune stale droplets
+agentsea claude hetzner --headless --output json   # CI/CD friendly
+agentsea codex gcp --prompt "Add tests for auth"   # Non-interactive runs
+agentsea claude sprite --fast                       # Parallel provisioning optimizations
+agentsea fix <spawn-id>                             # Recover a broken VM in-place
+agentsea resume                                     # Continue a failed provision
+agentsea tree                                       # Parent/child spawn relationships
+agentsea export <name>                              # Export a Claude spawn to GitHub
+agentsea cleanup digitalocean --dry-run             # Prune stale droplets
 ```
 
-History lives locally. Rerun with `grid-spawn last`. Filter with `grid-spawn ls codex`. Delete with `grid-spawn rm`. Status with `grid-spawn ps`.
+History lives locally. Rerun with `agentsea last`. Filter with `agentsea ls codex`. Delete with `agentsea rm`. Status with `agentsea ps`.
 
 This is terminal-native infrastructure for terminal-native agents.
 
@@ -179,7 +179,7 @@ This is terminal-native infrastructure for terminal-native agents.
 
 Let's be honest � it's **pre-alpha**. Things break. Edge cases exist. We're wiring up first-party image slugs and polishing the long tail of agent-specific quirks.
 
-Grid Spawn is also **not** a hosted agent service. We don't run your VMs. We don't store your code. We give you the CLI and the manifest; you bring the cloud.
+AgentSea is also **not** a hosted agent service. We don't run your VMs. We don't store your code. We give you the CLI and the manifest; you bring the cloud.
 
 And it's **not** locked to one model provider. The Grid routes inference; you pick the model with `--model openai/gpt-5.3-codex` or your preferences file.
 
@@ -196,7 +196,7 @@ export THEGRID_API_KEY=sk-or-v1-...
 export DIGITALOCEAN_ACCESS_TOKEN=dop_v1_...
 
 # 3. Spawn
-grid-spawn openclaw digitalocean
+agentsea openclaw digitalocean
 ```
 
 No global install? One-liner without the CLI:
@@ -208,7 +208,7 @@ bash <(curl -fsSL https://spawn.thegrid.ai/sh/digitalocean/openclaw.sh)
 Interactive picker if you can't decide:
 
 ```bash
-grid-spawn
+agentsea
 ```
 
 ---
@@ -217,7 +217,7 @@ grid-spawn
 
 The agent era needs infrastructure that matches how developers actually work: **CLI-first, cloud-native, provider-agnostic, and fast.**
 
-Grid Spawn is that infrastructure.
+AgentSea is that infrastructure.
 
 One manifest. One CLI. Your cloud. Any agent. The Grid for inference.
 
@@ -225,7 +225,7 @@ Stop writing bootstrap scripts. Start spawning.
 
 ---
 
-**Grid Spawn** is open source (Apache-2.0) from [Spectral Finance](https://github.com/Spectral-Finance/grid-spawn).  
+**AgentSea** is open source (Apache-2.0) from [Spectral Finance](https://github.com/Spectral-Finance/agentsea).  
 Get your API key at [thegrid.ai](https://thegrid.ai).  
 Read the CLI guide at [spawn.thegrid.ai/cli](https://spawn.thegrid.ai/cli).
 

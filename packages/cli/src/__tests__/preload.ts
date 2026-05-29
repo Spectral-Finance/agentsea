@@ -9,7 +9,7 @@
 import { mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import os, { tmpdir } from "node:os";
 import { join } from "node:path";
-import { tryCatch } from "@grid-spawn/sdk";
+import { tryCatch } from "@agentsea/sdk";
 
 const REAL_HOME = process.env.HOME ?? "";
 
@@ -42,7 +42,7 @@ os.homedir = () => TEST_HOME;
 process.env.SPAWN_HOME = join(TEST_HOME, ".spawn");
 
 /** Sandbox repo root — no manifest.json unless a test writes one */
-const SANDBOX_GRID_ROOT = join(TEST_HOME, "grid-spawn-root");
+const SANDBOX_GRID_ROOT = join(TEST_HOME, "agentsea-root");
 mkdirSync(SANDBOX_GRID_ROOT, {
   recursive: true,
 });
@@ -63,7 +63,7 @@ mkdirSync(join(TEST_HOME, ".cache"), {
 mkdirSync(join(TEST_HOME, ".config"), {
   recursive: true,
 });
-mkdirSync(join(TEST_HOME, ".config", "grid-spawn"), {
+mkdirSync(join(TEST_HOME, ".config", "agentsea"), {
   recursive: true,
 });
 mkdirSync(join(TEST_HOME, ".claude"), {

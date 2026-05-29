@@ -7,7 +7,7 @@ import type { CloudRunner } from "./agent-setup.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import * as p from "@clack/prompts";
-import { toRecord } from "@grid-spawn/sdk";
+import { toRecord } from "@agentsea/sdk";
 import { uploadConfigFile } from "./agent-setup.js";
 import { parseJsonObj } from "./parse.js";
 import { getTmpDir } from "./paths.js";

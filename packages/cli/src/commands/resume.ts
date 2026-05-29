@@ -1,9 +1,9 @@
-// grid-spawn resume - continue provisioning from last recorded phase
+// agentsea resume - continue provisioning from last recorded phase
 
 import type { SpawnRecord } from "../history.js";
 
 import * as p from "@clack/prompts";
-import { getErrorMessage } from "@grid-spawn/sdk";
+import { getErrorMessage } from "@agentsea/sdk";
 import pc from "picocolors";
 import {
   isProvisioningIncomplete,
@@ -15,7 +15,7 @@ import {
 import { loadManifest } from "../manifest.js";
 import { asyncTryCatch } from "../shared/result.js";
 import { resumeOrchestrationFromRecord } from "../shared/orchestrate.js";
-import { GRID_SPAWN_CLI } from "../shared/cli-invocation.js";
+import { AGENTSEA_CLI } from "../shared/cli-invocation.js";
 import { buildRecordLabel, buildRecordSubtitle } from "./list.js";
 import { handleCancel, isInteractiveTTY } from "./shared.js";
 
@@ -47,8 +47,8 @@ export async function cmdResume(spawnId?: string, opts?: { recoverOnly?: boolean
     if (n === 0) {
       p.log.info("No new provision checkpoints to import into history.");
     } else {
-      p.log.success(`Imported ${n} spawn record(s) from ~/.config/grid-spawn/runs/.`);
-      p.log.info("Run " + pc.cyan(`${GRID_SPAWN_CLI} resume`) + " to continue provisioning.");
+      p.log.success(`Imported ${n} spawn record(s) from ~/.config/agentsea/runs/.`);
+      p.log.info("Run " + pc.cyan(`${AGENTSEA_CLI} resume`) + " to continue provisioning.");
     }
     return;
   }
@@ -76,9 +76,9 @@ export async function cmdResume(spawnId?: string, opts?: { recoverOnly?: boolean
     if (!record) {
       p.log.error(
         `No incomplete spawn matched ${pc.bold(spawnId)}. Try ` +
-          pc.cyan(`${GRID_SPAWN_CLI} list`) +
+          pc.cyan(`${AGENTSEA_CLI} list`) +
           " or " +
-          pc.cyan(`${GRID_SPAWN_CLI} resume --recover`) +
+          pc.cyan(`${AGENTSEA_CLI} resume --recover`) +
           ".",
       );
       process.exit(1);
@@ -87,11 +87,11 @@ export async function cmdResume(spawnId?: string, opts?: { recoverOnly?: boolean
     record = candidates[0];
   } else if (candidates.length === 0) {
     p.log.info("No incomplete spawns in history.");
-    p.log.info("If a VM was created but history was lost, run " + pc.cyan(`${GRID_SPAWN_CLI} resume --recover`) + " first.");
+    p.log.info("If a VM was created but history was lost, run " + pc.cyan(`${AGENTSEA_CLI} resume --recover`) + " first.");
     return;
   } else if (!isInteractiveTTY()) {
-    p.log.error(`${GRID_SPAWN_CLI} resume needs a spawn id when multiple incomplete spawns exist.`);
-    p.log.info("Usage: " + pc.cyan(GRID_SPAWN_CLI + " resume <spawn-id>"));
+    p.log.error(`${AGENTSEA_CLI} resume needs a spawn id when multiple incomplete spawns exist.`);
+    p.log.info("Usage: " + pc.cyan(AGENTSEA_CLI + " resume <spawn-id>"));
     process.exit(1);
   } else {
     const choice = await p.select({

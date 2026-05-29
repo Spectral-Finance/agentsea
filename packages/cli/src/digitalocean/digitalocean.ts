@@ -6,10 +6,10 @@ import type { CloudInitTier } from "../shared/agents.js";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import * as p from "@clack/prompts";
-import { getErrorMessage, isNumber, isString, toObjectArray, toRecord } from "@grid-spawn/sdk";
+import { getErrorMessage, isNumber, isString, toObjectArray, toRecord } from "@agentsea/sdk";
 import { isInteractiveTTY } from "../commands/shared.js";
 import { handleBillingError, isBillingError, showNonBillingError } from "../shared/billing-guidance.js";
-import { GRID_SPAWN_CLI } from "../shared/cli-invocation.js";
+import { AGENTSEA_CLI } from "../shared/cli-invocation.js";
 import { getPackagesForTier, cloudInitAptBootstrapLines, NODE_INSTALL_CMD, needsBun, needsNode } from "../shared/cloud-init.js";
 import { generateCsrfState, OAUTH_CSS } from "../shared/oauth.js";
 import { parseJsonObj } from "../shared/parse.js";
@@ -1702,9 +1702,9 @@ export async function interactiveSession(cmd: string, ip?: string): Promise<numb
   logWarn(`  ${DO_DASHBOARD_URL}`);
   logWarn("");
   logAlwaysInfo("To delete from CLI:");
-  logAlwaysInfo(`  ${GRID_SPAWN_CLI} delete`);
+  logAlwaysInfo(`  ${AGENTSEA_CLI} delete`);
   logAlwaysInfo("To reconnect:");
-  logAlwaysInfo(`  ${GRID_SPAWN_CLI} last`);
+  logAlwaysInfo(`  ${AGENTSEA_CLI} last`);
   logAlwaysInfo(`  or: ssh -i ~/.ssh/${SPAWN_KEY_NAME} root@${serverIp}`);
 
   return exitCode;
@@ -1792,16 +1792,16 @@ export async function listServers(): Promise<CloudInstance[]> {
   return results;
 }
 
-export interface GridSpawnDropletRef {
+export interface AgentSeaDropletRef {
   id: string;
   name: string;
   createdAt: string;
 }
 
-/** Droplets tagged with Grid Spawn attribution (`spawn`). */
-export async function listGridSpawnDroplets(): Promise<GridSpawnDropletRef[]> {
+/** Droplets tagged with AgentSea attribution (`spawn`). */
+export async function listAgentSeaDroplets(): Promise<AgentSeaDropletRef[]> {
   const droplets = await doGetAll("/droplets", "droplets");
-  const results: GridSpawnDropletRef[] = [];
+  const results: AgentSeaDropletRef[] = [];
   for (const d of droplets) {
     const tags = d.tags;
     if (!Array.isArray(tags) || !tags.includes(SPAWN_DIGITALOCEAN_ATTRIBUTION_TAG)) {

@@ -6,7 +6,7 @@ import "../load-env.js";
 
 import type { CloudOrchestrator } from "../shared/orchestrate.js";
 
-import { getErrorMessage } from "@grid-spawn/sdk";
+import { getErrorMessage } from "@agentsea/sdk";
 import pkg from "../../package.json" with { type: "json" };
 import { runOrchestration } from "../shared/orchestrate.js";
 import { initTelemetry } from "../shared/telemetry.js";

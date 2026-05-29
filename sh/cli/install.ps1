@@ -12,14 +12,14 @@
 
 $ErrorActionPreference = "Stop"
 
-$SPAWN_REPO    = "Spectral-Finance/grid-spawn"
+$SPAWN_REPO    = "Spectral-Finance/agentsea"
 $SPAWN_RAW_BASE = "https://raw.githubusercontent.com/$SPAWN_REPO/main"
 $MIN_BUN_VERSION = [version]"1.2.0"
 
-function Write-Step  { param($msg) Write-Host "[spawn] $msg" -ForegroundColor Cyan }
-function Write-Info  { param($msg) Write-Host "[spawn] $msg" -ForegroundColor Green }
-function Write-Warn  { param($msg) Write-Host "[spawn] $msg" -ForegroundColor Yellow }
-function Write-Err   { param($msg) Write-Host "[spawn] $msg" -ForegroundColor Red }
+function Write-Step  { param($msg) Write-Host "[agentsea] $msg" -ForegroundColor Cyan }
+function Write-Info  { param($msg) Write-Host "[agentsea] $msg" -ForegroundColor Green }
+function Write-Warn  { param($msg) Write-Host "[agentsea] $msg" -ForegroundColor Yellow }
+function Write-Err   { param($msg) Write-Host "[agentsea] $msg" -ForegroundColor Red }
 
 # -- Helpers -------------------------------------------------------------------
 
@@ -74,19 +74,19 @@ function Add-ToUserPath {
         $newPath = ($dirs + $Dir) -join ";"
         [System.Environment]::SetEnvironmentVariable("Path", $newPath, "User")
         $env:Path = "$env:Path;$Dir"
-        Write-Warn "$Dir added to your user PATH. Restart your terminal to use 'spawn'."
+        Write-Warn "$Dir added to your user PATH. Restart your terminal to use 'agentsea'."
     }
 }
 
 function Install-SpawnCli {
-    $tmpDir = Join-Path $env:TEMP ("spawn-install-" + [System.IO.Path]::GetRandomFileName())
+    $tmpDir = Join-Path $env:TEMP ("agentsea-install-" + [System.IO.Path]::GetRandomFileName())
     New-Item -ItemType Directory -Path $tmpDir | Out-Null
 
     try {
         $cliDir = Join-Path $tmpDir "cli"
 
         # Download CLI source via git (preferred) or individual files
-        Write-Step "Downloading spawn CLI source..."
+        Write-Step "Downloading agentsea CLI source..."
         $gitAvailable = $null -ne (Get-Command git -ErrorAction SilentlyContinue)
         if ($gitAvailable) {
             $repoDir = Join-Path $tmpDir "repo"
@@ -119,7 +119,7 @@ function Install-SpawnCli {
         }
 
         # Build with bun
-        Write-Step "Building spawn CLI..."
+        Write-Step "Building agentsea CLI..."
         Push-Location $cliDir
         bun install
         $buildOk = $false
@@ -141,15 +141,15 @@ function Install-SpawnCli {
         New-Item -ItemType Directory -Force -Path $installDir | Out-Null
 
         # Copy cli.js as the spawn script; create a .cmd wrapper so it's invokable from cmd.exe too
-        $cliJs    = Join-Path $installDir "spawn"
-        $cliCmd   = Join-Path $installDir "spawn.cmd"
+        $cliJs    = Join-Path $installDir "agentsea"
+        $cliCmd   = Join-Path $installDir "agentsea.cmd"
 
         Copy-Item (Join-Path $cliDir "cli.js") $cliJs -Force
 
-        # spawn.cmd -- lets users run `spawn` from cmd.exe and PowerShell without specifying bun
+        # agentsea.cmd -- lets users run `spawn` from cmd.exe and PowerShell without specifying bun
         Set-Content $cliCmd "@bun `"%~dp0spawn`" %*"
 
-        Write-Info "Installed spawn to $installDir"
+        Write-Info "Installed agentsea to $installDir"
         Add-ToUserPath $installDir
 
         # Show version
@@ -157,7 +157,7 @@ function Install-SpawnCli {
             Write-Host ""
             & bun $cliJs version
             Write-Host ""
-            Write-Info "Run 'spawn' to get started"
+            Write-Info "Run 'agentsea' to get started"
         } catch { }
     } finally {
         Remove-Item $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -190,5 +190,5 @@ if ($bunVer -lt $MIN_BUN_VERSION) {
     Write-Info "bun upgraded to $bunVer"
 }
 
-Write-Step "Installing spawn via bun..."
+Write-Step "Installing agentsea via bun..."
 Install-SpawnCli

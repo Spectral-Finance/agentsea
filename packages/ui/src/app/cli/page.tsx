@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { loadManifest } from "@grid-spawn/sdk/node";
+import { loadManifest } from "@agentsea/sdk/node";
 
 import { agentImageFromSlug, resolveLaunchCloud } from "../landing-from-manifest";
 import { SiteHeader } from "../site-header";
@@ -34,16 +34,16 @@ export async function generateMetadata({ searchParams }: CliGuidePageProps): Pro
 
   if (!agentSlug && !cloudParam) {
     return {
-      title: "CLI reference — Grid Spawn",
-      description: "Install and use the grid-spawn CLI: commands, environment variables, and tokens.",
+      title: "CLI reference — AgentSea",
+      description: "Install and use the agentsea CLI: commands, environment variables, and tokens.",
     };
   }
 
   const manifest = await loadManifestSafe();
   if (!manifest) {
     return {
-      title: "CLI reference — Grid Spawn",
-      description: "Install and use the grid-spawn CLI: commands, environment variables, and tokens.",
+      title: "CLI reference — AgentSea",
+      description: "Install and use the agentsea CLI: commands, environment variables, and tokens.",
     };
   }
 
@@ -52,13 +52,13 @@ export async function generateMetadata({ searchParams }: CliGuidePageProps): Pro
 
   if (launch && agentMeta) {
     return {
-      title: `Launch ${agentMeta.name} on ${launch.cloudName} — Grid Spawn`,
-      description: `Install Grid Spawn and launch ${agentMeta.name} on ${launch.cloudName}.`,
+      title: `Launch ${agentMeta.name} on ${launch.cloudName} — AgentSea`,
+      description: `Install AgentSea and launch ${agentMeta.name} on ${launch.cloudName}.`,
     };
   }
   return {
-    title: "CLI reference — Grid Spawn",
-    description: "Install and use the grid-spawn CLI: commands, environment variables, and tokens.",
+    title: "CLI reference — AgentSea",
+    description: "Install and use the agentsea CLI: commands, environment variables, and tokens.",
   };
 }
 

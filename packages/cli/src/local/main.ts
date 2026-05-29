@@ -7,7 +7,7 @@ import "../load-env.js";
 import type { CloudOrchestrator } from "../shared/orchestrate.js";
 
 import * as p from "@clack/prompts";
-import { getErrorMessage } from "@grid-spawn/sdk";
+import { getErrorMessage } from "@agentsea/sdk";
 import pkg from "../../package.json" with { type: "json" };
 import { createCloudAgentsFromModules } from "../shared/agent-module-registry.js";
 import { makeDockerRunner, runOrchestration } from "../shared/orchestrate.js";

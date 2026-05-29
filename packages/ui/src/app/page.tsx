@@ -4,11 +4,11 @@ import { Suspense } from "react";
 import { CopyCode } from "./copy-code";
 import { HomeAgentGridStatic } from "./home-agent-grid-static";
 import { HomeLaunchFlow } from "./home-launch-flow";
-import { WHY_GRID_SPAWN_CARDS } from "./why-grid-spawn-cards";
+import { WHY_AGENTSEA_CARDS } from "./why-agentsea-cards";
 import {
-  GRID_SPAWN_INSTALL_URL,
-  GRID_SPAWN_OPENCLAW_DO_ONELINER,
-  isGridSpawnCdnConfigured,
+  AGENTSEA_INSTALL_URL,
+  AGENTSEA_OPENCLAW_DO_ONELINER,
+  isAgentSeaCdnConfigured,
   THE_GRID_EXTERNAL_URL,
 } from "./home-public-constants";
 import { homeAgentCloudAvailability, homeAgentsFromManifest, homeCloudOptionsFromManifest } from "./landing-from-manifest";
@@ -16,17 +16,17 @@ import { SiteHeader } from "./site-header";
 import { SpawnCopyBlock } from "./spawn-copy-block";
 import styles from "./page.module.scss";
 
-import { loadManifest } from "@grid-spawn/sdk/node";
-const CLI_SNIPPET = `# With grid-spawn on your PATH, try:
-grid-spawn                              # Interactive picker
-grid-spawn openclaw digitalocean         # Launch directly
-grid-spawn ls                            # List your spawns`;
+import { loadManifest } from "@agentsea/sdk/node";
+const CLI_SNIPPET = `# With agentsea on your PATH, try:
+agentsea                              # Interactive picker
+agentsea openclaw digitalocean         # Launch directly
+agentsea ls                            # List your deployments`;
 
-const CURL_PIPE_SNIPPET = `bash <(curl -fsSL ${GRID_SPAWN_INSTALL_URL})`;
+const CURL_PIPE_SNIPPET = `bash <(curl -fsSL ${AGENTSEA_INSTALL_URL})`;
 
-const INSTALL_SNIPPET = `curl -fsSL ${GRID_SPAWN_INSTALL_URL} | bash`;
+const INSTALL_SNIPPET = `curl -fsSL ${AGENTSEA_INSTALL_URL} | bash`;
 
-const WITHOUT_CLI_SNIPPET = `bash <(curl -fsSL ${GRID_SPAWN_OPENCLAW_DO_ONELINER})`;
+const WITHOUT_CLI_SNIPPET = `bash <(curl -fsSL ${AGENTSEA_OPENCLAW_DO_ONELINER})`;
 
 export default async function HomePage() {
   const manifest = await loadManifest(false);
@@ -40,7 +40,7 @@ export default async function HomePage() {
         <div className={styles["shell"]}>
           <section className={styles["hero"]} aria-labelledby="hero-title">
             <h1 id="hero-title" className={styles["hero__title"]}>
-              Spawn AI agents locally or on the cloud
+              Launch AI agents locally or on the cloud
             </h1>
             <p className={styles["hero__tagline"]}>
               Any agent, on your infrastructure — wired to The Grid API.
@@ -54,7 +54,7 @@ export default async function HomePage() {
               agentCloudAvailability={agentCloudAvailability}
             />
           </Suspense>
-          {isGridSpawnCdnConfigured && (
+          {isAgentSeaCdnConfigured && (
             <section className={styles["band"]} aria-labelledby="without-cli-title">
               <h2 id="without-cli-title" className={styles["h2"]}>
                 Without the CLI
@@ -78,11 +78,11 @@ export default async function HomePage() {
             <div className={styles["hoodInstallCard"]}>
               <p className={styles["hoodInstallCard__kicker"]}>Do this first — one time on your computer</p>
               <h3 className={styles["hoodInstallCard__title"]}>
-                Install the <code className={styles["hoodInstallCard__code"]}>grid-spawn</code> CLI
+                Install the <code className={styles["hoodInstallCard__code"]}>agentsea</code> CLI
               </h3>
               <p className={styles["hoodInstallCard__hint"]}>
                 Paste into a terminal (macOS, Linux, or WSL). When it finishes, the{" "}
-                <code className={styles["hoodInstallCard__code"]}>grid-spawn</code> command should work. Everything
+                <code className={styles["hoodInstallCard__code"]}>agentsea</code> command should work. Everything
                 below assumes this step is done.
               </p>
               <CopyCode label="install" code={INSTALL_SNIPPET} />
@@ -98,7 +98,7 @@ export default async function HomePage() {
             </div>
 
             <p className={styles["hoodPipelineLead"]}>
-              <strong>On each spawn</strong>, the CLI provisions your cloud VM and installs the agent.
+              <strong>On each launch</strong>, the CLI provisions your cloud VM and installs the agent.
             </p>
             <ol className={styles["hoodSteps"]}>
               <li className={styles["hoodStep"]}>
@@ -107,7 +107,7 @@ export default async function HomePage() {
                   <h3 className={styles["hoodStep__h"]}>Provision</h3>
                   <p className={styles["hoodStep__p"]}>
                     Authenticate to your cloud (DigitalOcean, Hetzner, AWS, GCP, …) via environment variables or saved
-                    config under <code>~/.config/grid-spawn/</code>.
+                    config under <code>~/.config/agentsea/</code>.
                   </p>
                 </div>
               </li>
@@ -154,13 +154,13 @@ export default async function HomePage() {
 
           <section className={styles["band"]} aria-labelledby="why-title">
             <h2 id="why-title" className={styles["h2"]}>
-              Why Grid Spawn?
+              Why AgentSea?
             </h2>
             <p className={styles["lede"]}>
               The fastest way to deploy Grid-backed agents on infrastructure you control.
             </p>
             <div className={styles["whyGrid"]}>
-              {WHY_GRID_SPAWN_CARDS.map((c) => (
+              {WHY_AGENTSEA_CARDS.map((c) => (
                 <div key={c.title} className={styles["whyCard"]}>
                   <h3 className={styles["whyCard__h"]}>{c.title}</h3>
                   <p className={styles["whyCard__p"]}>{c.body}</p>

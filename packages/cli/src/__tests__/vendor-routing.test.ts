@@ -7,7 +7,7 @@ import {
   VENDOR_CHAT_MODEL_DEFAULT,
   VENDOR_CODEX_MODEL_PROVIDER_KEY,
   VENDOR_KILO_PROVIDER_TYPE_VALUE,
-  digitalOceanGridSpawnImageSlug,
+  digitalOceanAgentSeaImageSlug,
 } from "../shared/vendor-routing.js";
 
 describe("vendor-routing", () => {
@@ -25,6 +25,6 @@ describe("vendor-routing", () => {
     expect(VENDOR_CODEX_MODEL_PROVIDER_KEY).toBe("opentouter");
     expect(LEGACY_SAVED_API_KEY_CONFIG_STEM).toBe("opentouter");
     expect(VENDOR_AGENT_IMAGE_REGISTRY).toBe("ghcr.io/openrouterteam");
-    expect(digitalOceanGridSpawnImageSlug("claude")).toBe("openrouter-spawnclaude");
+    expect(digitalOceanAgentSeaImageSlug("claude")).toBe("openrouter-spawnclaude");
   });
 });

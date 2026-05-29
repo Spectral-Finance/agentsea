@@ -5,7 +5,7 @@ import type { CloudInstance, VMConnection } from "../history.js";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { Daytona, DaytonaNotFoundError } from "@daytonaio/sdk";
-import { isString } from "@grid-spawn/sdk";
+import { isString } from "@agentsea/sdk";
 import * as v from "valibot";
 import {
   validateConnectionIP,
@@ -14,7 +14,7 @@ import {
   validateTunnelUrl,
   validateUsername,
 } from "../security.js";
-import { GRID_SPAWN_CLI } from "../shared/cli-invocation.js";
+import { AGENTSEA_CLI } from "../shared/cli-invocation.js";
 import { parseJsonWith } from "../shared/parse.js";
 import { getSpawnCloudConfigPath } from "../shared/paths.js";
 import { asyncTryCatch } from "../shared/result.js";
@@ -933,7 +933,7 @@ export async function interactiveSession(cmd: string): Promise<number> {
   process.stderr.write("\n");
   logWarn(`Session ended. Your sandbox '${_state.sandboxId}' may still be running.`);
   logWarn(`Manage or delete it in the Daytona dashboard: ${DAYTONA_DASHBOARD_URL}`);
-  logInfo(`Delete it from Spawn with: ${GRID_SPAWN_CLI} delete`);
+  logInfo(`Delete it from Spawn with: ${AGENTSEA_CLI} delete`);
   return exitCode;
 }
 

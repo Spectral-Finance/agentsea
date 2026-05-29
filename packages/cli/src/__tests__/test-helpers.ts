@@ -1,4 +1,4 @@
-import type { Manifest } from "@grid-spawn/sdk";
+import type { Manifest } from "@agentsea/sdk";
 
 import { mock, spyOn } from "bun:test";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
@@ -235,7 +235,7 @@ export function setupTestEnvironment(): TestEnvironment {
     recursive: true,
   });
 
-  const cacheDir = join(testDir, "grid-spawn");
+  const cacheDir = join(testDir, "agentsea");
   const cacheFile = join(cacheDir, "manifest.json");
 
   const originalEnv = {

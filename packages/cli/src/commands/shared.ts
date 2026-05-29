@@ -3,7 +3,7 @@ import type { Manifest } from "../manifest.js";
 
 import * as fs from "node:fs";
 import * as p from "@clack/prompts";
-import { getErrorMessage, isString } from "@grid-spawn/sdk";
+import { getErrorMessage, isString } from "@agentsea/sdk";
 import pc from "picocolors";
 import pkg from "../../package.json" with { type: "json" };
 import { agentKeys, cloudKeys, isStaleCache, loadManifest, matrixStatus } from "../manifest.js";
@@ -202,13 +202,13 @@ const ENTITY_DEFS: Record<"agent" | "cloud", EntityDef> = {
   agent: {
     label: "agent",
     labelPlural: "agents",
-    listCmd: "grid-spawn agents",
+    listCmd: "agentsea agents",
     opposite: "cloud provider",
   },
   cloud: {
     label: "cloud",
     labelPlural: "clouds",
-    listCmd: "grid-spawn clouds",
+    listCmd: "agentsea clouds",
     opposite: "agent",
   },
 };
@@ -237,7 +237,7 @@ function checkWrongKind(value: string, kind: "agent" | "cloud", manifest: Manife
     const kindLabel = kind === "agent" ? "a cloud provider" : "an agent";
     const wrongLabel = kind === "agent" ? "an agent" : "a cloud provider";
     p.log.info(`"${value}" is ${kindLabel}, not ${wrongLabel}.`);
-    p.log.info(`Usage: ${pc.cyan("grid-spawn <agent> <cloud>")}`);
+    p.log.info(`Usage: ${pc.cyan("agentsea <agent> <cloud>")}`);
     p.log.info(`Run ${pc.cyan(def.listCmd)} to see available ${def.labelPlural}.`);
     return true;
   }
@@ -260,7 +260,7 @@ function checkSameKindTypo(
   const match = suggestTypoCorrection(value, manifest, kind);
   if (match) {
     p.log.info(`Did you mean ${pc.cyan(match)} (${collection[match].name})?`);
-    p.log.info(`  ${pc.cyan(`grid-spawn ${match}`)}`);
+    p.log.info(`  ${pc.cyan(`agentsea ${match}`)}`);
     p.log.info(`Run ${pc.cyan(def.listCmd)} to see available ${def.labelPlural}.`);
     return true;
   }
@@ -279,7 +279,7 @@ function checkOppositeKindTypo(value: string, kind: "agent" | "cloud", manifest:
       `"${pc.bold(value)}" looks like ${oppositeDef.label} ${pc.cyan(oppositeMatch)} (${oppositeCollection[oppositeMatch].name}).`,
     );
     p.log.info("Did you swap the agent and cloud arguments?");
-    p.log.info(`Usage: ${pc.cyan("grid-spawn <agent> <cloud>")}`);
+    p.log.info(`Usage: ${pc.cyan("agentsea <agent> <cloud>")}`);
     return true;
   }
   return false;
@@ -363,7 +363,7 @@ export function validateImplementation(manifest: Manifest, cloud: string, agent:
       const { sortedClouds, credCount } = prioritizeCloudsByCredentials(availableClouds, manifest);
       const examples = sortedClouds.slice(0, 3).map((c) => {
         const hasCredsMarker = hasCloudCredentials(manifest.clouds[c].auth) ? " (ready)" : "";
-        return `grid-spawn ${agent} ${c}${hasCredsMarker}`;
+        return `agentsea ${agent} ${c}${hasCredsMarker}`;
       });
       console.log();
       p.log.info(
@@ -373,7 +373,7 @@ export function validateImplementation(manifest: Manifest, cloud: string, agent:
         p.log.info(`  ${pc.cyan(cmd)}`);
       }
       if (availableClouds.length > 3) {
-        p.log.info(`\nRun ${pc.cyan(`grid-spawn ${agent}`)} to see all ${availableClouds.length} options.`);
+        p.log.info(`\nRun ${pc.cyan(`agentsea ${agent}`)} to see all ${availableClouds.length} options.`);
       }
       if (credCount > 0) {
         console.log();
@@ -382,7 +382,7 @@ export function validateImplementation(manifest: Manifest, cloud: string, agent:
     } else {
       console.log();
       p.log.info("This agent has no implemented cloud providers yet.");
-      p.log.info(`Run ${pc.cyan("grid-spawn matrix")} to see the full availability matrix.`);
+      p.log.info(`Run ${pc.cyan("agentsea matrix")} to see the full availability matrix.`);
     }
     process.exit(1);
   }
@@ -535,7 +535,7 @@ export function formatCredStatusLine(varName: string, urlHint?: string): string 
   return `  ${pc.red(varName)} ${pc.dim("-- not set")}${suffix}`;
 }
 
-/** Check if credentials are saved in ~/.config/grid-spawn/{cloud}.json */
+/** Check if credentials are saved in ~/.config/agentsea/{cloud}.json */
 function hasCloudConfigCredentials(cloud: string): boolean {
   return unwrapOr(
     tryCatch(() => {
@@ -578,7 +578,7 @@ function getCredentialGuidance(cloud: string, onlyGridApiKey: boolean): string {
   if (onlyGridApiKey) {
     return "You will be prompted for your Grid (THEGRID_API_KEY) during setup.";
   }
-  return `Run ${pc.cyan(`grid-spawn ${cloud}`)} for setup instructions.`;
+  return `Run ${pc.cyan(`agentsea ${cloud}`)} for setup instructions.`;
 }
 
 export async function preflightCredentialCheck(manifest: Manifest, cloud: string): Promise<void> {
@@ -620,7 +620,7 @@ export function getAuthHint(manifest: Manifest, cloud: string): string | undefin
 export function credentialHints(cloud: string, authHint?: string, verb = "Missing or invalid"): string[] {
   if (!authHint) {
     return [
-      `  - ${verb} credentials (run ${pc.cyan(`grid-spawn ${cloud}`)} for setup)`,
+      `  - ${verb} credentials (run ${pc.cyan(`agentsea ${cloud}`)} for setup)`,
     ];
   }
 
@@ -641,7 +641,7 @@ export function credentialHints(cloud: string, authHint?: string, verb = "Missin
     return [
       `  - Credentials appear to be set (${allVars.map((v) => pc.cyan(v)).join(", ")})`,
       "    The error may be due to invalid or expired credentials",
-      `    Run ${pc.cyan(`grid-spawn ${cloud}`)} for setup instructions`,
+      `    Run ${pc.cyan(`agentsea ${cloud}`)} for setup instructions`,
     ];
   }
 
@@ -651,7 +651,7 @@ export function credentialHints(cloud: string, authHint?: string, verb = "Missin
   for (const v of missing) {
     lines.push(`      ${pc.cyan(v)} -- not set`);
   }
-  lines.push(`    Run ${pc.cyan(`grid-spawn ${cloud}`)} for setup instructions`);
+  lines.push(`    Run ${pc.cyan(`agentsea ${cloud}`)} for setup instructions`);
 
   return lines;
 }
@@ -674,8 +674,8 @@ export function validateRunSecurity(agent: string, cloud: string, prompt?: strin
     process.exit(1);
   }
 
-  validateNonEmptyString(agent, "Agent name", "grid-spawn agents");
-  validateNonEmptyString(cloud, "Cloud name", "grid-spawn clouds");
+  validateNonEmptyString(agent, "Agent name", "agentsea agents");
+  validateNonEmptyString(cloud, "Cloud name", "agentsea clouds");
 }
 
 /** Validate agent and cloud exist in manifest, showing all errors before exiting */
@@ -745,7 +745,7 @@ function printAuthVariableStatus(authVars: string[], cloudUrl?: string): void {
   }
 }
 
-/** Print quick-start instructions showing credential status and example grid-spawn command */
+/** Print quick-start instructions showing credential status and example agentsea command */
 export function printQuickStart(opts: {
   auth: string;
   authVars: string[];
@@ -784,12 +784,12 @@ export function buildRetryCommand(agent: string, cloud: string, prompt?: string,
   const safeName = spawnName ? spawnName.replace(/"/g, '\\"') : "";
   const nameFlag = spawnName ? ` --name "${safeName}"` : "";
   if (!prompt) {
-    return `grid-spawn ${agent} ${cloud}${nameFlag}`;
+    return `agentsea ${agent} ${cloud}${nameFlag}`;
   }
   if (prompt.length <= 80) {
     const safe = prompt.replace(/"/g, '\\"');
-    return `grid-spawn ${agent} ${cloud}${nameFlag} --prompt "${safe}"`;
+    return `agentsea ${agent} ${cloud}${nameFlag} --prompt "${safe}"`;
   }
   // Long prompts: suggest --prompt-file instead of truncating into a broken command
-  return `grid-spawn ${agent} ${cloud}${nameFlag} --prompt-file <your-prompt-file>`;
+  return `agentsea ${agent} ${cloud}${nameFlag} --prompt-file <your-prompt-file>`;
 }

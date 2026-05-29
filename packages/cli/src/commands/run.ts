@@ -20,7 +20,7 @@ import {
 } from "../security.js";
 import { asyncTryCatch, isFileError, tryCatch, tryCatchIf } from "../shared/result.js";
 import { getLocalShell, isWindows } from "../shared/shell.js";
-import { GRID_SPAWN_CLI } from "../shared/cli-invocation.js";
+import { AGENTSEA_CLI } from "../shared/cli-invocation.js";
 import { getCloudProvider } from "../shared/cloud-provider-registry.js";
 import { maybeShowStarPrompt } from "../shared/star-prompt.js";
 import { captureEvent, setTelemetryContext } from "../shared/telemetry.js";
@@ -90,7 +90,7 @@ function detectAndFixSwappedArgs(
 } {
   if (!manifest.agents[agent] && manifest.clouds[agent] && manifest.agents[cloud]) {
     p.log.info("It looks like you swapped the agent and cloud arguments.");
-    p.log.info(`Running: ${pc.cyan(`${GRID_SPAWN_CLI} ${cloud} ${agent}`)}`);
+    p.log.info(`Running: ${pc.cyan(`${AGENTSEA_CLI} ${cloud} ${agent}`)}`);
     return {
       agent: cloud,
       cloud: agent,
@@ -209,7 +209,7 @@ export function showDryRunPreview(manifest: Manifest, agent: string, cloud: stri
   const allSet = credLines.every((l) => l.includes("-- set"));
   if (!allSet) {
     p.log.warn("Some credentials are missing. Set them before launching.");
-    p.log.info(`Run ${pc.cyan(`${GRID_SPAWN_CLI} ${cloud}`)} for setup instructions.`);
+    p.log.info(`Run ${pc.cyan(`${AGENTSEA_CLI} ${cloud}`)} for setup instructions.`);
     console.log();
   }
 
@@ -265,7 +265,7 @@ function report404Failure(): void {
   console.error("  \u2022 The script is currently being deployed (rare)");
   console.error("  \u2022 There's a temporary issue with the file server");
   console.error(`\n${pc.bold("Next steps:")}`);
-  console.error(`  1. Verify it's implemented: ${pc.cyan(`${GRID_SPAWN_CLI} matrix`)}`);
+  console.error(`  1. Verify it's implemented: ${pc.cyan(`${AGENTSEA_CLI} matrix`)}`);
   console.error("  2. If the matrix shows \u2713, wait 1-2 minutes and retry");
   console.error(`  3. Still broken? Report it: ${pc.cyan(`https://github.com/${REPO}/issues`)}`);
 }
@@ -321,7 +321,7 @@ const NETWORK_ERROR_GUIDANCE: Record<"timeout" | "connection" | "unknown", Error
       "  \u2022 Firewall blocking or slowing the connection",
     ],
     steps: (ghUrl) => [
-      "  2. Verify combination exists: " + pc.cyan(`${GRID_SPAWN_CLI} matrix`),
+      "  2. Verify combination exists: " + pc.cyan(`${AGENTSEA_CLI} matrix`),
       "  3. Wait a moment and retry",
       "  4. Test URL directly: " + pc.dim(ghUrl),
     ],
@@ -344,7 +344,7 @@ const NETWORK_ERROR_GUIDANCE: Record<"timeout" | "connection" | "unknown", Error
       "  \u2022 GitHub's servers temporarily down",
     ],
     steps: (ghUrl) => [
-      "  2. Verify combination exists: " + pc.cyan(`${GRID_SPAWN_CLI} matrix`),
+      "  2. Verify combination exists: " + pc.cyan(`${AGENTSEA_CLI} matrix`),
       "  3. Wait a moment and retry",
       "  4. Test URL directly: " + pc.dim(ghUrl),
     ],
@@ -370,7 +370,7 @@ function reportDownloadError(ghUrl: string, err: unknown): never {
     console.error(step);
   }
   console.error(
-    `  5. Offline / local dev: run from the grid-spawn checkout (with ${pc.cyan("sh/")}), or set ${pc.cyan("SPAWN_CLI_DIR")} / ${pc.cyan("GRID_SPAWN_ROOT")} to that repo root`,
+    `  5. Offline / local dev: run from the agentsea checkout (with ${pc.cyan("sh/")}), or set ${pc.cyan("SPAWN_CLI_DIR")} / ${pc.cyan("GRID_SPAWN_ROOT")} to that repo root`,
   );
   process.exit(1);
 }
@@ -606,7 +606,7 @@ function runBashScript(
   if (isRetryableExitCode(errMsg)) {
     console.error();
     p.log.warn("SSH connection lost. Your server is likely still running.");
-    p.log.warn(`Reconnect manually: ${pc.cyan(`${GRID_SPAWN_CLI} last`)} — or re-run the same ${GRID_SPAWN_CLI} command.`);
+    p.log.warn(`Reconnect manually: ${pc.cyan(`${AGENTSEA_CLI} last`)} — or re-run the same ${AGENTSEA_CLI} command.`);
     return undefined; // Don't report as failure — user already has clear guidance
   }
 

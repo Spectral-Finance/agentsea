@@ -32,6 +32,7 @@ Thumbs.db
 
 # Bundled CLI (run `npm run build:cli` after clone)
 packages/cli/cli.js
+packages/cli/agentsea
 packages/cli/grid-spawn
 
 

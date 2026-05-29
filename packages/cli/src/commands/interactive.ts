@@ -8,7 +8,7 @@ import { getAgentOptionalSteps } from "../shared/agents.js";
 import { hasSavedTheGridKey } from "../shared/oauth.js";
 import { asyncTryCatch, tryCatch, unwrapOr } from "../shared/result.js";
 import { maybeShowStarPrompt } from "../shared/star-prompt.js";
-import { GRID_SPAWN_CLI } from "../shared/cli-invocation.js";
+import { AGENTSEA_CLI } from "../shared/cli-invocation.js";
 import { captureEvent, setTelemetryContext } from "../shared/telemetry.js";
 import { validateModelId, CLACK_LOG_OPTS } from "../shared/ui.js";
 import { cmdLink } from "./link.js";
@@ -57,7 +57,7 @@ function getAndValidateCloudChoices(
   if (clouds.length === 0) {
     p.log.error(`No clouds available for ${manifest.agents[agent].name}`);
     p.log.info("This agent has no implemented cloud providers yet.");
-    p.log.info(`Run ${pc.cyan(`${GRID_SPAWN_CLI} matrix`)} to see the full availability matrix.`);
+    p.log.info(`Run ${pc.cyan(`${AGENTSEA_CLI} matrix`)} to see the full availability matrix.`);
     process.exit(1);
   }
 
@@ -175,7 +175,7 @@ function filterSetupStepsForAgent(agentName: string) {
 
 /**
  * Comma-separated list of setup steps that are pre-selected in the setup multiselect.
- * Used for `grid-spawn <agent> <cloud>` (direct path) so defaults apply with no extra prompts.
+ * Used for `agentsea <agent> <cloud>` (direct path) so defaults apply with no extra prompts.
  * Returns undefined when there are no steps to configure (leave SPAWN_ENABLED_STEPS unset).
  */
 export function getDefaultSpawnEnabledStepsCsv(agentName: string): string | undefined {
@@ -394,7 +394,7 @@ export async function cmdInteractive(): Promise<void> {
   const agentName = manifest.agents[agentChoice].name;
   const cloudName = manifest.clouds[cloudChoice].name;
   p.log.step(`Launching ${pc.bold(agentName)} on ${pc.bold(cloudName)}`, CLACK_LOG_OPTS);
-  p.log.info(`Next time, run directly: ${pc.cyan(`${GRID_SPAWN_CLI} ${agentChoice} ${cloudChoice}`)}`);
+  p.log.info(`Next time, run directly: ${pc.cyan(`${AGENTSEA_CLI} ${agentChoice} ${cloudChoice}`)}`);
   p.outro("Handing off to spawn script...");
   captureEvent("picker_completed");
 
@@ -434,7 +434,7 @@ export async function cmdAgentInteractive(agent: string, prompt?: string, dryRun
     if (agentMatch) {
       p.log.info(`Did you mean ${pc.cyan(agentMatch)} (${manifest.agents[agentMatch].name})?`);
     }
-    p.log.info(`Run ${pc.cyan(`${GRID_SPAWN_CLI} agents`)} to see available agents.`);
+    p.log.info(`Run ${pc.cyan(`${AGENTSEA_CLI} agents`)} to see available agents.`);
     process.exit(1);
   }
 
@@ -492,7 +492,7 @@ export async function cmdAgentInteractive(agent: string, prompt?: string, dryRun
   const agentName = manifest.agents[resolvedAgent].name;
   const cloudName = manifest.clouds[cloudChoice].name;
   p.log.step(`Launching ${pc.bold(agentName)} on ${pc.bold(cloudName)}`, CLACK_LOG_OPTS);
-  p.log.info(`Next time, run directly: ${pc.cyan(`${GRID_SPAWN_CLI} ${resolvedAgent} ${cloudChoice}`)}`);
+  p.log.info(`Next time, run directly: ${pc.cyan(`${AGENTSEA_CLI} ${resolvedAgent} ${cloudChoice}`)}`);
   p.outro("Handing off to spawn script...");
   captureEvent("picker_completed");
 

@@ -16,6 +16,6 @@ describe("preload filesystem sandbox", () => {
     const root = process.env.GRID_SPAWN_ROOT ?? "";
     const home = process.env.HOME ?? "";
     expect(root.startsWith(home)).toBe(true);
-    expect(root).toContain("grid-spawn-root");
+    expect(root).toContain("agentsea-root");
   });
 });

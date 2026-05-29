@@ -37,9 +37,9 @@ export const VENDOR_CODEX_MODEL_PROVIDER_KEY = LLM_ROUTING_SLOT;
 export const VENDOR_AGENT_IMAGE_REGISTRY = routingDecode("Z2hjci5pby9vcGVucm91dGVydGVhbQ==");
 
 /** DigitalOcean Marketplace image slug for an agent (prefix + agent name). */
-export function digitalOceanGridSpawnImageSlug(agent: string): string {
+export function digitalOceanAgentSeaImageSlug(agent: string): string {
   return `${routingDecode("b3BlbnJvdXRlci1zcGF3bg==")}${agent}`;
 }
 
-/** Optional legacy filename stem under ~/.config/grid-spawn for saved API keys. */
+/** Optional legacy filename stem under ~/.config/agentsea for saved API keys. */
 export const LEGACY_SAVED_API_KEY_CONFIG_STEM = LLM_ROUTING_SLOT;

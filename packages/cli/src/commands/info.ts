@@ -1,7 +1,7 @@
 import type { Manifest } from "../manifest.js";
 
 import pc from "picocolors";
-import { GRID_SPAWN_CLI } from "../shared/cli-invocation.js";
+import { AGENTSEA_CLI } from "../shared/cli-invocation.js";
 import { agentKeys, cloudKeys, countImplemented, matrixStatus } from "../manifest.js";
 import {
   getImplementedAgents,
@@ -141,7 +141,7 @@ function renderMatrixFooter(manifest: Manifest, agents: string[], clouds: string
   console.log(pc.green(`${impl}/${total} combinations implemented`));
   console.log(
     pc.dim(
-      `Launch: ${pc.cyan(`${GRID_SPAWN_CLI} <agent> <cloud>`)}  |  Details: ${pc.cyan(`${GRID_SPAWN_CLI} <agent>`)} or ${pc.cyan(`${GRID_SPAWN_CLI} <cloud>`)}`,
+      `Launch: ${pc.cyan(`${AGENTSEA_CLI} <agent> <cloud>`)}  |  Details: ${pc.cyan(`${AGENTSEA_CLI} <agent>`)} or ${pc.cyan(`${AGENTSEA_CLI} <cloud>`)}`,
     ),
   );
   console.log();
@@ -215,7 +215,7 @@ export async function cmdAgents(): Promise<void> {
     console.log(pc.dim(`  ${pc.green("ready")} = credentials detected for at least one cloud`));
   }
   console.log(
-    pc.dim(`  Run ${pc.cyan(`${GRID_SPAWN_CLI} <agent>`)} for details, or ${pc.cyan(`${GRID_SPAWN_CLI} <agent> <cloud>`)} to launch.`),
+    pc.dim(`  Run ${pc.cyan(`${AGENTSEA_CLI} <agent>`)} for details, or ${pc.cyan(`${AGENTSEA_CLI} <agent> <cloud>`)} to launch.`),
   );
   console.log();
 }
@@ -261,12 +261,12 @@ export async function cmdClouds(): Promise<void> {
     console.log(pc.dim(`  ${pc.green("ready")} = credentials detected  ${pc.yellow("needs")} = credentials not set`));
   } else {
     console.log(
-      pc.dim(`  ${pc.yellow("needs")} = credentials not set (run ${pc.cyan(`${GRID_SPAWN_CLI} <cloud>`)} for setup instructions)`),
+      pc.dim(`  ${pc.yellow("needs")} = credentials not set (run ${pc.cyan(`${AGENTSEA_CLI} <cloud>`)} for setup instructions)`),
     );
   }
   console.log(
     pc.dim(
-      `  Run ${pc.cyan(`${GRID_SPAWN_CLI} <cloud>`)} for setup instructions, or ${pc.cyan(`${GRID_SPAWN_CLI} <agent> <cloud>`)} to launch.`,
+      `  Run ${pc.cyan(`${AGENTSEA_CLI} <cloud>`)} for setup instructions, or ${pc.cyan(`${AGENTSEA_CLI} <agent> <cloud>`)} to launch.`,
     ),
   );
   console.log();
@@ -275,7 +275,7 @@ export async function cmdClouds(): Promise<void> {
 // ── Agent Info ───────────────────────────────────────────────────────────────
 
 function buildCloudCommandHint(agentKey: string, cloudKey: string, manifest: Manifest): string {
-  const hint = `${GRID_SPAWN_CLI} ${agentKey} ${cloudKey}`;
+  const hint = `${AGENTSEA_CLI} ${agentKey} ${cloudKey}`;
   return hasCloudCredentials(manifest.clouds[cloudKey].auth) ? `${hint}  ${pc.green("(credentials detected)")}` : hint;
 }
 
@@ -335,7 +335,7 @@ export async function cmdAgentInfo(agent: string, preloadedManifest?: Manifest):
       auth: cloudDef.auth,
       authVars: parseAuthEnvVars(cloudDef.auth),
       cloudUrl: cloudDef.url,
-      spawnCmd: `grid-spawn ${agentKey} ${exampleCloud}`,
+      spawnCmd: `agentsea ${agentKey} ${exampleCloud}`,
     });
   }
 
@@ -352,7 +352,7 @@ function printAgentList(manifest: Manifest, implAgents: string[], missingAgents:
     for (const agent of implAgents) {
       const a = manifest.agents[agent];
       console.log(
-        `  ${pc.green(agent.padEnd(NAME_COLUMN_WIDTH))} ${a.name.padEnd(NAME_COLUMN_WIDTH)} ${pc.dim("grid-spawn " + agent + " " + cloudKey)}`,
+        `  ${pc.green(agent.padEnd(NAME_COLUMN_WIDTH))} ${a.name.padEnd(NAME_COLUMN_WIDTH)} ${pc.dim("agentsea " + agent + " " + cloudKey)}`,
       );
     }
   }
@@ -386,7 +386,7 @@ export async function cmdCloudInfo(cloud: string, preloadedManifest?: Manifest):
     auth: c.auth,
     authVars,
     cloudUrl: c.url,
-    spawnCmd: exampleAgent ? `grid-spawn ${exampleAgent} ${cloudKey}` : undefined,
+    spawnCmd: exampleAgent ? `agentsea ${exampleAgent} ${cloudKey}` : undefined,
   });
 
   const allAgents = agentKeys(manifest);

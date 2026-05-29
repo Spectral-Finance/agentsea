@@ -77,7 +77,7 @@ export const T3_LAUNCH_SHELL_PREFIX = [
 /** Shell command to launch T3 on loopback (matches SSH tunnel target on the VM). */
 export const T3_SERVER_LAUNCH = "t3 --port 3773 --host 127.0.0.1 --no-browser";
 
-/** Full remote launch: env prefix + T3 server (pairing URL is opened by grid-spawn locally). */
+/** Full remote launch: env prefix + T3 server (pairing URL is opened by agentsea locally). */
 export const T3_LAUNCH_CMD = `${T3_LAUNCH_SHELL_PREFIX}; ${T3_SERVER_LAUNCH}`;
 
 /** @deprecated Use T3_LAUNCH_CMD ó pipe/while breaks under bash -c quoting. */
@@ -182,7 +182,7 @@ export function logT3PairingHandoff(localPort: number, pairingUrl?: string): voi
     [
       cookieHint,
       "T3 Code requires browser pairing ù ignore the localhost:3773 link in T3 server logs.",
-      "When T3 starts, grid-spawn will print/open the correct URL, or copy the token and open:",
+      "When T3 starts, agentsea will print/open the correct URL, or copy the token and open:",
       `  http://127.0.0.1:${localPort}/pair#token=TOKEN_FROM_LOG`,
     ].join("\n"),
   );

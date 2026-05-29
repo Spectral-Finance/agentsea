@@ -70,7 +70,7 @@ describe("DigitalOcean E2E (real provision + verify via e2e.sh)", () => {
   const agents = e2eAgentListFromEnv();
   for (const agent of agents) {
     it.skipIf(!canRun)(
-      `${agent}: grid-spawn provision, install, verify on DigitalOcean`,
+      `${agent}: agentsea provision, install, verify on DigitalOcean`,
       async () => {
         await runSerial(async () => {
           const r = await runE2eForAgent(agent);
