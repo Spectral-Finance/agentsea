@@ -209,7 +209,7 @@ describe("cmdMatrix output", () => {
       await cmdMatrix();
 
       const output = captureOutput(consoleMocks.log);
-      expect(output).toContain("grid-spawn <agent> <cloud>");
+      expect(output).toContain("agentsea <agent> <cloud>");
     });
   });
 
@@ -416,8 +416,8 @@ describe("cmdAgents output", () => {
       await cmdAgents();
 
       const output = captureOutput(consoleMocks.log);
-      expect(output).toContain("grid-spawn <agent>");
-      expect(output).toContain("grid-spawn <agent> <cloud>");
+      expect(output).toContain("agentsea <agent>");
+      expect(output).toContain("agentsea <agent> <cloud>");
     });
   });
 
@@ -561,8 +561,8 @@ describe("cmdClouds output", () => {
       await cmdClouds();
 
       const output = captureOutput(consoleMocks.log);
-      expect(output).toContain("grid-spawn <cloud>");
-      expect(output).toContain("grid-spawn <agent> <cloud>");
+      expect(output).toContain("agentsea <cloud>");
+      expect(output).toContain("agentsea <agent> <cloud>");
     });
   });
 

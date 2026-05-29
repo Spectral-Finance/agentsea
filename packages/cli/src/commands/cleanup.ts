@@ -1,10 +1,10 @@
-// grid-spawn cleanup — remove stale provider resources tagged by Grid Spawn (opt-in, DigitalOcean first).
+// agentsea cleanup — remove stale provider resources tagged by AgentSea (opt-in, DigitalOcean first).
 
 import * as p from "@clack/prompts";
 import pc from "picocolors";
-import { getErrorMessage } from "@grid-spawn/sdk";
+import { getErrorMessage } from "@agentsea/sdk";
 import { asyncTryCatch } from "../shared/result.js";
-import { GRID_SPAWN_CLI } from "../shared/cli-invocation.js";
+import { AGENTSEA_CLI } from "../shared/cli-invocation.js";
 import { handleCancel, isInteractiveTTY } from "./shared.js";
 
 const DEFAULT_TTL_HOURS = 168;
@@ -35,7 +35,7 @@ export async function cmdCleanup(
     process.exit(1);
   }
 
-  const listResult = await asyncTryCatch(() => doMod.listGridSpawnDroplets());
+  const listResult = await asyncTryCatch(() => doMod.listAgentSeaDroplets());
   if (!listResult.ok) {
     p.log.error(`Could not list droplets: ${getErrorMessage(listResult.error)}`);
     process.exit(1);
@@ -85,7 +85,7 @@ export async function cmdCleanup(
 
   if (!confirmed) {
     if (!isInteractiveTTY()) {
-      p.log.error(`${GRID_SPAWN_CLI} cleanup requires ${pc.cyan("--yes")} when not running interactively.`);
+      p.log.error(`${AGENTSEA_CLI} cleanup requires ${pc.cyan("--yes")} when not running interactively.`);
       process.exit(1);
     }
     p.log.info("Cancelled.");

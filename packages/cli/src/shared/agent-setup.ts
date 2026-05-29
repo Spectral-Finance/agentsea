@@ -6,7 +6,7 @@ import type { Result } from "./ui.js";
 
 import { unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { getErrorMessage } from "@grid-spawn/sdk";
+import { getErrorMessage } from "@agentsea/sdk";
 import { setupCursorProxy, startCursorProxy } from "./cursor-proxy.js";
 import { gridInferenceOverrideEnvLine, resolveGridAnthropicMessagesClientBase, resolveGridInferenceApiBase, resolveGridOpenClawMessagesBase } from "./grid-api.js";
 import { JUNIE_LAUNCH_SHELL_PREFIX, setupJunieConfig, startJunieLiteLlmProxy } from "./junie-config.js";
@@ -217,7 +217,7 @@ proxy_handler_instance = DropEmptyToolsHandler()
  * the host without `/v1` (otherwise the SDK produces `/v1/v1/messages`).
  */
 
-/** Default Control UI `/chat` session path (grid-spawn OpenClaw uses agent `main`). */
+/** Default Control UI `/chat` session path (agentsea OpenClaw uses agent `main`). */
 const OPENCLAW_CONTROL_UI_DEFAULT_CHAT_SESSION = "agent:main:main";
 
 /**

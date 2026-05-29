@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
-import { asyncTryCatch, isString } from "@grid-spawn/sdk";
+import { asyncTryCatch, isString } from "@agentsea/sdk";
 import { loadManifest } from "../manifest.js";
 import { createConsoleMocks, createMockManifest, mockClackPrompts, restoreMocks } from "./test-helpers";
 
@@ -84,7 +84,7 @@ describe("detectAndFixSwappedArgs via cmdRun", () => {
 
       const infoCalls = mockLogInfo.mock.calls.map((c: unknown[]) => c.join(" "));
       expect(infoCalls.some((msg: string) => msg.includes("swapped"))).toBe(true);
-      expect(infoCalls.some((msg: string) => msg.includes("grid-spawn claude sprite"))).toBe(true);
+      expect(infoCalls.some((msg: string) => msg.includes("agentsea claude sprite"))).toBe(true);
     });
 
     it("should proceed correctly after swapping args", async () => {

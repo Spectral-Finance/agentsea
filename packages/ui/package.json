@@ -1,8 +1,8 @@
 {
-  "name": "@grid-spawn/ui",
+  "name": "@agentsea/ui",
   "version": "0.1.0",
   "private": true,
-  "description": "Grid Spawn web app — Next.js 15 + React 19 + SCSS Modules. Styled to match grid-ui.",
+  "description": "AgentSea web app — Next.js 15 + React 19 + SCSS Modules. Styled to match grid-ui.",
   "scripts": {
     "clean": "rm -rf .next .next-dev",
     "dev": "next dev --port 3011",
@@ -14,7 +14,7 @@
     "sync:cdn-public": "bash scripts/sync-cdn-public.sh"
   },
   "dependencies": {
-    "@grid-spawn/sdk": "*",
+    "@agentsea/sdk": "*",
     "@tanstack/react-query": "^5.84.1",
     "next": "15.5.18",
     "phoenix": "^1.8.0",

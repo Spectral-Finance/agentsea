@@ -1,13 +1,13 @@
 // Load monorepo-root `.env` before any other CLI code reads process.env.
 //
 // Resolution (in order):
-// 1. If `GRID_SPAWN_ROOT` is set: load `$GRID_SPAWN_ROOT/.env` when the file exists.
+// 1. If `AGENTSEA_ROOT` (or legacy `GRID_SPAWN_ROOT`) is set: load `$ROOT/.env` when the file exists.
 // 2. Else walk up from `process.cwd()` (max 10 segments); if a directory contains both
 //    `manifest.json` and `.env`, load that `.env`.
 //
 // Does not override variables already set in the environment (matches dotenv defaults).
 //
-// Diagnostics: set `SPAWN_DEBUG=1` or `GRID_SPAWN_DEBUG_ENV=1` to log which path was used
+// Diagnostics: set `SPAWN_DEBUG=1` or `AGENTSEA_DEBUG_ENV=1` to log which path was used
 // (paths only — never values).
 
 import { existsSync } from "node:fs";
@@ -15,7 +15,11 @@ import { dirname, join } from "node:path";
 import { config } from "dotenv";
 
 function envDiagEnabled(): boolean {
-  return process.env.SPAWN_DEBUG === "1" || process.env.GRID_SPAWN_DEBUG_ENV === "1";
+  return (
+    process.env.SPAWN_DEBUG === "1" ||
+    process.env.AGENTSEA_DEBUG_ENV === "1" ||
+    process.env.GRID_SPAWN_DEBUG_ENV === "1"
+  );
 }
 
 function logEnvDiag(message: string): void {
@@ -30,16 +34,20 @@ function tryLoad(path: string): void {
   }
 }
 
+function rootOverride(): string | undefined {
+  return process.env.AGENTSEA_ROOT?.trim() || process.env.GRID_SPAWN_ROOT?.trim() || undefined;
+}
+
 /** Exported for tests — runs the same resolution rules as CLI startup. */
-export function loadGridSpawnDotenv(): void {
-  const rootOverride = process.env.GRID_SPAWN_ROOT?.trim();
-  if (rootOverride) {
-    const envPath = join(rootOverride, ".env");
+export function loadAgentSeaDotenv(): void {
+  const root = rootOverride();
+  if (root) {
+    const envPath = join(root, ".env");
     if (existsSync(envPath)) {
       tryLoad(envPath);
       logEnvDiag(`Loaded dotenv file: ${envPath}`);
     } else {
-      logEnvDiag(`GRID_SPAWN_ROOT set but no .env at ${envPath} — using process environment only`);
+      logEnvDiag(`AGENTSEA_ROOT set but no .env at ${envPath} — using process environment only`);
     }
   } else {
     let dir = process.cwd();
@@ -53,7 +61,7 @@ export function loadGridSpawnDotenv(): void {
           logEnvDiag(`Loaded dotenv file: ${envPath} (manifest at ${join(dir, "manifest.json")})`);
         } else {
           logEnvDiag(
-            `Found manifest.json at ${dir} but no .env — THEGRID_API_KEY / DIGITALOCEAN_* must come from the shell or GRID_SPAWN_ROOT`,
+            `Found manifest.json at ${dir} but no .env — THEGRID_API_KEY / DIGITALOCEAN_* must come from the shell or AGENTSEA_ROOT`,
           );
         }
         break;
@@ -66,10 +74,13 @@ export function loadGridSpawnDotenv(): void {
     }
     if (!foundManifest) {
       logEnvDiag(
-        `No repo-root manifest.json within 10 segments of cwd (${process.cwd()}) — dotenv auto-load skipped; use GRID_SPAWN_ROOT`,
+        `No repo-root manifest.json within 10 segments of cwd (${process.cwd()}) — dotenv auto-load skipped; use AGENTSEA_ROOT`,
       );
     }
   }
 }
 
-loadGridSpawnDotenv();
+/** @deprecated Use loadAgentSeaDotenv */
+export const loadGridSpawnDotenv = loadAgentSeaDotenv;
+
+loadAgentSeaDotenv();

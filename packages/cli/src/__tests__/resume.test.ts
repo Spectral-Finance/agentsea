@@ -17,7 +17,7 @@ describe("resume / provision recovery", () => {
   let originalEnv: NodeJS.ProcessEnv;
 
   beforeEach(() => {
-    testDir = join(process.env.HOME ?? "", `.grid-spawn-resume-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    testDir = join(process.env.HOME ?? "", `.agentsea-resume-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     mkdirSync(testDir, { recursive: true });
     originalEnv = { ...process.env };
     process.env.GRID_SPAWN_HOME = testDir;

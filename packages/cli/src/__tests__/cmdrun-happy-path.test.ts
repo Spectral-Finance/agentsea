@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { asyncTryCatch, isString } from "@grid-spawn/sdk";
+import { asyncTryCatch, isString } from "@agentsea/sdk";
 import { HISTORY_SCHEMA_VERSION } from "../history.js";
 import { loadManifest } from "../manifest.js";
 import { createConsoleMocks, createMockManifest, mockClackPrompts, restoreMocks } from "./test-helpers";

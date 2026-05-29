@@ -2,7 +2,7 @@
 
 import type { VMConnection } from "../history.js";
 
-import { getErrorMessage } from "@grid-spawn/sdk";
+import { getErrorMessage } from "@agentsea/sdk";
 import { logWarn } from "../shared/ui.js";
 import { resolveAgent } from "./agents.js";
 import { setupAutoUpdateSessionForSandbox } from "./daytona.js";

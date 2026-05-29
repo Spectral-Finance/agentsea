@@ -2,7 +2,7 @@ import type { SpawnRecord, VMConnection } from "../history.js";
 import type { AgentConfig } from "../shared/agents.js";
 import type { CloudProvider } from "../shared/cloud-provider.js";
 import type { CloudOrchestrator } from "../shared/orchestrate.js";
-import { digitalOceanGridSpawnImageSlug } from "../shared/vendor-routing.js";
+import { digitalOceanAgentSeaImageSlug } from "../shared/vendor-routing.js";
 import { logInfo } from "../shared/ui.js";
 import {
   AGENT_MIN_SIZE,
@@ -25,13 +25,13 @@ import { runDigitalOceanReadinessGate } from "./readiness.js";
 
 /** DigitalOcean Marketplace snapshot slugs for Grid-published images (portal naming; see todo.md). */
 const MARKETPLACE_IMAGES: Record<string, string> = {
-  claude: digitalOceanGridSpawnImageSlug("claude"),
-  codex: digitalOceanGridSpawnImageSlug("codex"),
-  openclaw: digitalOceanGridSpawnImageSlug("openclaw"),
-  opencode: digitalOceanGridSpawnImageSlug("opencode"),
-  kilocode: digitalOceanGridSpawnImageSlug("kilocode"),
-  hermes: digitalOceanGridSpawnImageSlug("hermes"),
-  junie: digitalOceanGridSpawnImageSlug("junie"),
+  claude: digitalOceanAgentSeaImageSlug("claude"),
+  codex: digitalOceanAgentSeaImageSlug("codex"),
+  openclaw: digitalOceanAgentSeaImageSlug("openclaw"),
+  opencode: digitalOceanAgentSeaImageSlug("opencode"),
+  kilocode: digitalOceanAgentSeaImageSlug("kilocode"),
+  hermes: digitalOceanAgentSeaImageSlug("hermes"),
+  junie: digitalOceanAgentSeaImageSlug("junie"),
 };
 
 export function createDigitalOceanOrchestrator(agentName: string, agent: AgentConfig): CloudOrchestrator {
@@ -129,7 +129,7 @@ export async function buildDigitalOceanResumeOrchestrator(record: SpawnRecord): 
     async createServer() {
       return vmConn;
     },
-    getServerName: async () => conn.server_name ?? "grid-spawn-resume",
+    getServerName: async () => conn.server_name ?? "agentsea-resume",
     async waitForReady() {
       await waitForSshOnly(ip);
     },

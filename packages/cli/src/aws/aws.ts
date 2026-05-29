@@ -6,10 +6,10 @@ import type { CloudInitTier } from "../shared/agents.js";
 import { createHash, createHmac } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { getErrorMessage } from "@grid-spawn/sdk";
+import { getErrorMessage } from "@agentsea/sdk";
 import * as v from "valibot";
 import { handleBillingError, isBillingError, showNonBillingError } from "../shared/billing-guidance.js";
-import { GRID_SPAWN_CLI } from "../shared/cli-invocation.js";
+import { AGENTSEA_CLI } from "../shared/cli-invocation.js";
 import { getPackagesForTier, NODE_INSTALL_CMD, needsBun, needsNode } from "../shared/cloud-init.js";
 import { parseJsonWith } from "../shared/parse.js";
 import { getSpawnCloudConfigPath } from "../shared/paths.js";
@@ -1237,9 +1237,9 @@ export async function interactiveSession(cmd: string): Promise<number> {
   logWarn(`  ${DASHBOARD_URL}`);
   logWarn("");
   logInfo("To delete from CLI:");
-  logInfo(`  ${GRID_SPAWN_CLI} delete`);
+  logInfo(`  ${AGENTSEA_CLI} delete`);
   logInfo("To reconnect:");
-  logInfo(`  ${GRID_SPAWN_CLI} last`);
+  logInfo(`  ${AGENTSEA_CLI} last`);
   logInfo(`  or: ssh -i ~/.ssh/${SPAWN_KEY_NAME} ${SSH_USER}@${_state.instanceIp}`);
 
   return exitCode;

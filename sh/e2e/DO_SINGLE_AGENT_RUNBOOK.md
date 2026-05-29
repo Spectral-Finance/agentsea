@@ -49,8 +49,8 @@ Examples for future agents:
 ## 4) Preflight checks (fail fast before spending)
 
 ```bash
-cd /home/barney/spectral/grid-spawn
-npm run build --workspace=@grid-spawn/cli
+cd /home/barney/spectral/agentsea
+npm run build --workspace=@agentsea/cli
 npm run test:cli
 ```
 
@@ -72,8 +72,8 @@ test -f ~/.ssh/spawn_ed25519
 This executes provision -> verify -> input test -> teardown for one agent:
 
 ```bash
-cd /home/barney/spectral/grid-spawn
-LOG="/tmp/grid-spawn-e2e-${AGENT}-do-$(date +%Y%m%d-%H%M%S).log"
+cd /home/barney/spectral/agentsea
+LOG="/tmp/agentsea-e2e-${AGENT}-do-$(date +%Y%m%d-%H%M%S).log"
 ./sh/e2e/e2e.sh --cloud digitalocean --sequential "${AGENT}" 2>&1 | tee "$LOG"
 echo "LOG=$LOG"
 ```
@@ -120,13 +120,13 @@ Use `TIER_D_FAILURE_SCENARIOS.md` for deliberate resilience tests (timeouts, bad
 `e2e.sh` performs teardown automatically per agent. If a run is interrupted:
 
 ```bash
-grid-spawn delete --name <spawn-name> --yes
+agentsea delete --name <spawn-name> --yes
 ```
 
 If needed, remove stale headless lock:
 
 ```bash
-rm -f ~/.config/grid-spawn/runs/headless-provision.lock
+rm -f ~/.config/agentsea/runs/headless-provision.lock
 ```
 
 ## 9) Agent onboarding checklist (for future agents)

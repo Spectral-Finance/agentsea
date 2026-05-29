@@ -1,12 +1,12 @@
 # Telemetry and privacy
 
-The `grid-spawn` CLI sends **optional analytics** to PostHog when telemetry is enabled (default on).
+The `agentsea` CLI sends **optional analytics** to PostHog when telemetry is enabled (default on).
 
 ## What is collected
 
 - Funnel milestones (e.g. cloud authenticated, VM ready, install completed).
 - Low-volume product events and **scrubbed** error summaries.
-- Anonymous install id (`~/.config/grid-spawn/.telemetry-id`).
+- Anonymous install id (`~/.config/agentsea/.telemetry-id`).
 
 **Not** collected: command arguments, file paths, your prompts, or raw API keys (patterns in error text are redacted — see `packages/cli/src/shared/telemetry.ts`).
 

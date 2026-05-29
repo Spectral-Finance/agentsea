@@ -34,7 +34,7 @@ export const Logo = memo(function LogoComp({ size = "m", variant = "full", class
       <TheGridMark className={styles["logo__mark"]} />
       {variant === "full" && (
         <span className={styles["logo__word"]}>
-          grid<span className={styles["logo__word-spawn"]}>spawn</span>
+          Agent<span className={styles["logo__word-sea"]}>Sea</span>
         </span>
       )}
     </span>

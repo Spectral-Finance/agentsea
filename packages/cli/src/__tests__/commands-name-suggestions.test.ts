@@ -182,7 +182,7 @@ describe("Display Name Suggestions in Validation Errors", () => {
       // No "Did you mean" suggestion
       expect(infoCalls.some((msg: string) => msg.includes("Did you mean"))).toBe(false);
       // But should still suggest "spawn agents"
-      expect(infoCalls.some((msg: string) => msg.includes("grid-spawn agents"))).toBe(true);
+      expect(infoCalls.some((msg: string) => msg.includes("agentsea agents"))).toBe(true);
     });
 
     it("should prefer key-based suggestion over display name suggestion", async () => {
@@ -231,7 +231,7 @@ describe("Display Name Suggestions in Validation Errors", () => {
 
       const infoCalls = mockLogInfo.mock.calls.map((c: unknown[]) => c.join(" "));
       expect(infoCalls.some((msg: string) => msg.includes("Did you mean"))).toBe(false);
-      expect(infoCalls.some((msg: string) => msg.includes("grid-spawn clouds"))).toBe(true);
+      expect(infoCalls.some((msg: string) => msg.includes("agentsea clouds"))).toBe(true);
     });
 
     it("should prefer key-based suggestion over display name suggestion", async () => {
@@ -263,7 +263,7 @@ describe("Display Name Suggestions in Validation Errors", () => {
       await expect(cmdAgentInfo("totallyunknown")).rejects.toThrow("process.exit");
 
       const infoCalls = mockLogInfo.mock.calls.map((c: unknown[]) => c.join(" "));
-      expect(infoCalls.some((msg: string) => msg.includes("grid-spawn agents"))).toBe(true);
+      expect(infoCalls.some((msg: string) => msg.includes("agentsea agents"))).toBe(true);
       expect(infoCalls.some((msg: string) => msg.includes("Did you mean"))).toBe(false);
     });
   });
@@ -284,7 +284,7 @@ describe("Display Name Suggestions in Validation Errors", () => {
       await expect(cmdCloudInfo("totallyunknown")).rejects.toThrow("process.exit");
 
       const infoCalls = mockLogInfo.mock.calls.map((c: unknown[]) => c.join(" "));
-      expect(infoCalls.some((msg: string) => msg.includes("grid-spawn clouds"))).toBe(true);
+      expect(infoCalls.some((msg: string) => msg.includes("agentsea clouds"))).toBe(true);
       expect(infoCalls.some((msg: string) => msg.includes("Did you mean"))).toBe(false);
     });
   });

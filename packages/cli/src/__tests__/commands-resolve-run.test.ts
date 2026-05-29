@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
-import { asyncTryCatch, isString } from "@grid-spawn/sdk";
+import { asyncTryCatch, isString } from "@agentsea/sdk";
 import { loadManifest } from "../manifest.js";
 import { createConsoleMocks, createMockManifest, mockClackPrompts, restoreMocks } from "./test-helpers";
 
@@ -298,7 +298,7 @@ describe("cmdRun - display name resolution", () => {
       expect(infoCalls.some((msg: string) => msg.includes("4") && msg.includes("cloud"))).toBe(true);
       // Should suggest up to 3 example commands
       const exampleCmds = infoCalls.filter(
-        (msg: string) => msg.includes("grid-spawn claude") && !msg.includes("see all") && !msg.includes("to see"),
+        (msg: string) => msg.includes("agentsea claude") && !msg.includes("see all") && !msg.includes("to see"),
       );
       expect(exampleCmds.length).toBeGreaterThanOrEqual(1);
       expect(exampleCmds.length).toBeLessThanOrEqual(3);
@@ -327,7 +327,7 @@ describe("cmdRun - display name resolution", () => {
 
       const infoCalls = mockLogInfo.mock.calls.map((c: unknown[]) => c.join(" "));
       expect(infoCalls.some((msg: string) => msg.includes("no implemented cloud providers"))).toBe(true);
-      expect(infoCalls.some((msg: string) => msg.includes("grid-spawn matrix"))).toBe(true);
+      expect(infoCalls.some((msg: string) => msg.includes("agentsea matrix"))).toBe(true);
     });
   });
 

@@ -3,21 +3,21 @@ import Link from "next/link";
 import { CopyCode } from "../copy-code";
 import {
   DIGITALOCEAN_ACCESS_TOKEN_ENV_VAR,
-  GRID_SPAWN_INSTALL_URL,
-  GRID_SPAWN_REQUEST_AGENT_MAILTO,
+  AGENTSEA_INSTALL_URL,
+  AGENTSEA_REQUEST_AGENT_MAILTO,
   THEGRID_API_KEY_ENV_VAR,
   THEGRID_API_KEYS_DASHBOARD_ORIGIN,
 } from "../home-public-constants";
 
 import styles from "./page.module.scss";
 
-const INSTALL_SNIPPET = `curl -fsSL ${GRID_SPAWN_INSTALL_URL} | bash`;
+const INSTALL_SNIPPET = `curl -fsSL ${AGENTSEA_INSTALL_URL} | bash`;
 
-const COMMON_COMMANDS_SNIPPET = `grid-spawn                                # Interactive picker
-grid-spawn <agent> <cloud>                # Launch directly (e.g. openclaw digitalocean)
-grid-spawn ls                             # List your spawns
-grid-spawn matrix                         # Agent x cloud support matrix
-grid-spawn --help                         # Full flag reference`;
+const COMMON_COMMANDS_SNIPPET = `agentsea                                # Interactive picker
+agentsea <agent> <cloud>                # Launch directly (e.g. openclaw digitalocean)
+agentsea ls                             # List your deployments
+agentsea matrix                         # Agent x cloud support matrix
+agentsea --help                         # Full flag reference`;
 
 const ENV_SNIPPET = `# Grid platform (required for inference + dashboard)
 export ${THEGRID_API_KEY_ENV_VAR}=...     # create at ${THEGRID_API_KEYS_DASHBOARD_ORIGIN}
@@ -39,11 +39,11 @@ export function CliReference({ agentSlug, agentName }: { agentSlug?: string; age
   return (
     <div className={styles["reference"]}>
       <header className={styles["referenceHero"]}>
-        <h1 className={styles["referenceHero__title"]}>Grid Spawn CLI</h1>
+        <h1 className={styles["referenceHero__title"]}>AgentSea CLI</h1>
         <p className={styles["referenceHero__p"]}>
           {agentSlug && agentName ? (
             <>
-              Reference for the <code className={styles["inlineCode"]}>grid-spawn</code> CLI. Pick a cloud for{" "}
+              Reference for the <code className={styles["inlineCode"]}>agentsea</code> CLI. Pick a cloud for{" "}
               <strong>{agentName}</strong> on the{" "}
               <Link href={`/?agent=${encodeURIComponent(agentSlug)}`} className={styles["fallback__link"]}>
                 homepage
@@ -52,7 +52,7 @@ export function CliReference({ agentSlug, agentName }: { agentSlug?: string; age
             </>
           ) : (
             <>
-              Reference for the <code className={styles["inlineCode"]}>grid-spawn</code> CLI. To get a launch-ready
+              Reference for the <code className={styles["inlineCode"]}>agentsea</code> CLI. To get a launch-ready
               install + run snippet, pick an agent and a cloud on the{" "}
               <Link href="/" className={styles["fallback__link"]}>
                 homepage
@@ -86,9 +86,9 @@ export function CliReference({ agentSlug, agentName }: { agentSlug?: string; age
           Environment variables
         </h2>
         <p className={styles["referenceSection__p"]}>
-          <code className={styles["inlineCode"]}>grid-spawn</code> reads from your shell, then from{" "}
+          <code className={styles["inlineCode"]}>agentsea</code> reads from your shell, then from{" "}
           <code className={styles["inlineCode"]}>.env</code> at the repo root, then from saved config under{" "}
-          <code className={styles["inlineCode"]}>~/.config/grid-spawn/</code>.
+          <code className={styles["inlineCode"]}>~/.config/agentsea/</code>.
         </p>
         <CopyCode label="env" code={ENV_SNIPPET} />
       </section>
@@ -98,8 +98,8 @@ export function CliReference({ agentSlug, agentName }: { agentSlug?: string; age
           Missing something?
         </h2>
         <p className={styles["referenceSection__p"]}>
-          Run <code className={styles["inlineCode"]}>grid-spawn --help</code> for the full flag reference, or{" "}
-          <a href={GRID_SPAWN_REQUEST_AGENT_MAILTO} className={styles["fallback__link"]}>
+          Run <code className={styles["inlineCode"]}>agentsea --help</code> for the full flag reference, or{" "}
+          <a href={AGENTSEA_REQUEST_AGENT_MAILTO} className={styles["fallback__link"]}>
             request a missing agent
           </a>
           .

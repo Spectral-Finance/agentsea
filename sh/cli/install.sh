@@ -1,17 +1,17 @@
 #!/bin/bash
-# Installer for the spawn CLI
+# Installer for the agentsea CLI
 #
 # Usage:
 #   curl -fsSL --proto '=https' https://spawn.thegrid.ai/cli/install.sh | bash
 #
-# This installs spawn via bun. If bun is not available, it auto-installs it first.
+# This installs agentsea via bun. If bun is not available, it auto-installs it first.
 #
 # Override install directory:
 #   SPAWN_INSTALL_DIR=/usr/local/bin curl -fsSL --proto '=https' ... | bash
 
 set -eo pipefail
 
-SPAWN_REPO="Spectral-Finance/grid-spawn"
+SPAWN_REPO="Spectral-Finance/agentsea"
 SPAWN_CDN="https://spawn.thegrid.ai"
 SPAWN_RAW_BASE="https://raw.githubusercontent.com/${SPAWN_REPO}/main"
 MIN_BUN_VERSION="1.2.0"
@@ -27,10 +27,10 @@ NC='\033[0m'
 
 CYAN='\033[0;36m'
 
-log_info()  { printf '%b[spawn]%b %s\n' "$GREEN" "$NC" "$1"; }
-log_step()  { printf '%b[spawn]%b %s\n' "$CYAN" "$NC" "$1"; }
-log_warn()  { printf '%b[spawn]%b %s\n' "$YELLOW" "$NC" "$1"; }
-log_error() { printf '%b[spawn]%b %s\n' "$RED" "$NC" "$1"; }
+log_info()  { printf '%b[agentsea]%b %s\n' "$GREEN" "$NC" "$1"; }
+log_step()  { printf '%b[agentsea]%b %s\n' "$CYAN" "$NC" "$1"; }
+log_warn()  { printf '%b[agentsea]%b %s\n' "$YELLOW" "$NC" "$1"; }
+log_error() { printf '%b[agentsea]%b %s\n' "$RED" "$NC" "$1"; }
 
 # --- Helper: portable SHA-256 (macOS uses shasum, Linux uses sha256sum) ---
 sha256_file() {
@@ -156,7 +156,7 @@ safe_ln_sf() {
     fi
 }
 
-# --- Helper: ensure spawn works immediately and in future sessions ---
+# --- Helper: ensure agentsea works immediately and in future sessions ---
 # Installs to ~/.local/bin. If that's not already in PATH, also symlinks
 # to /usr/local/bin for immediate availability (without prompting for a
 # password — only if writable or passwordless sudo is available).
@@ -167,18 +167,18 @@ ensure_in_path() {
     local bun_bin_dir="${BUN_INSTALL}/bin"
 
     # 1. Check if install_dir and bun are already in the user's real PATH
-    local spawn_in_path=false
+    local agentsea_in_path=false
     local bun_in_path=false
     if echo "${_SPAWN_ORIG_PATH}" | tr ':' '\n' | grep -qxF "${install_dir}"; then
-        spawn_in_path=true
+        agentsea_in_path=true
     fi
     if echo "${_SPAWN_ORIG_PATH}" | tr ':' '\n' | grep -qxF "${bun_bin_dir}"; then
         bun_in_path=true
     fi
 
-    # 2. If spawn not in PATH, symlink into /usr/local/bin for immediate availability
+    # 2. If agentsea not in PATH, symlink into /usr/local/bin for immediate availability
     #    Try in order: direct write → passwordless sudo → prompt for password
-    #    Also symlink bun so that spawn's #!/usr/bin/env bun shebang resolves
+    #    Also symlink bun so that agentsea's #!/usr/bin/env bun shebang resolves
     local linked=false
     local bun_path
     bun_path="$(command -v bun 2>/dev/null || true)"
@@ -197,21 +197,21 @@ ensure_in_path() {
                 ;;
         esac
     fi
-    if [ "$spawn_in_path" = false ]; then
+    if [ "$agentsea_in_path" = false ]; then
         if [ -d /usr/local/bin ] && [ -w /usr/local/bin ]; then
-            safe_ln_sf "${install_dir}/spawn" /usr/local/bin/spawn && linked=true
+            safe_ln_sf "${install_dir}/agentsea" /usr/local/bin/agentsea && linked=true
             if [ -n "$bun_path" ] && [ ! -x /usr/local/bin/bun ]; then
                 safe_ln_sf "$bun_path" /usr/local/bin/bun 2>/dev/null || true
             fi
         elif has_passwordless_sudo; then
-            safe_ln_sf "${install_dir}/spawn" /usr/local/bin/spawn sudo 2>/dev/null && linked=true
+            safe_ln_sf "${install_dir}/agentsea" /usr/local/bin/agentsea sudo 2>/dev/null && linked=true
             if [ -n "$bun_path" ] && [ ! -x /usr/local/bin/bun ]; then
                 safe_ln_sf "$bun_path" /usr/local/bin/bun sudo 2>/dev/null || true
             fi
         elif command -v sudo &>/dev/null; then
             # Last resort: ask for password
-            log_step "Adding spawn to /usr/local/bin (may require your password)..."
-            safe_ln_sf "${install_dir}/spawn" /usr/local/bin/spawn sudo && linked=true || true
+            log_step "Adding agentsea to /usr/local/bin (may require your password)..."
+            safe_ln_sf "${install_dir}/agentsea" /usr/local/bin/agentsea sudo && linked=true || true
             if [ "$linked" = true ] && [ -n "$bun_path" ] && [ ! -x /usr/local/bin/bun ]; then
                 safe_ln_sf "$bun_path" /usr/local/bin/bun sudo 2>/dev/null || true
             fi
@@ -219,7 +219,7 @@ ensure_in_path() {
     fi
 
     # 3. Patch shell rc files so both ~/.local/bin and ~/.bun/bin are in PATH
-    #    for future sessions. ~/.bun/bin is required by spawn's #!/usr/bin/env bun shebang.
+    #    for future sessions. ~/.bun/bin is required by agentsea's #!/usr/bin/env bun shebang.
     local rc_file=""
     case "${SHELL:-/bin/bash}" in
         */zsh)  rc_file="${HOME}/.zshrc" ;;
@@ -228,8 +228,8 @@ ensure_in_path() {
     esac
 
     # Marker comments — keep in sync with packages/cli/src/shared/paths.ts
-    local marker_start="# >>> spawn >>>"
-    local marker_end="# <<< spawn <<<"
+    local marker_start="# >>> agentsea >>>"
+    local marker_end="# <<< agentsea <<<"
 
     # Helper: add a dir to rc files if not already present
     _patch_rc() {
@@ -253,7 +253,7 @@ ensure_in_path() {
         fi
     }
 
-    if [ "$spawn_in_path" = false ]; then
+    if [ "$agentsea_in_path" = false ]; then
         _patch_rc "${install_dir}"
     fi
     if [ "$bun_in_path" = false ]; then
@@ -262,19 +262,19 @@ ensure_in_path() {
 
     # 4. Show version and success message
     echo ""
-    SPAWN_NO_UPDATE_CHECK=1 PATH="${install_dir}:${PATH}" "${install_dir}/spawn" version
+    SPAWN_NO_UPDATE_CHECK=1 PATH="${install_dir}:${PATH}" "${install_dir}/agentsea" version
     echo ""
     local all_ready=true
-    if [ "$spawn_in_path" = false ] && [ "$linked" = false ]; then
+    if [ "$agentsea_in_path" = false ] && [ "$linked" = false ]; then
         all_ready=false
     fi
     if [ "$bun_in_path" = false ] && [ ! -x /usr/local/bin/bun ]; then
         all_ready=false
     fi
     if [ "$all_ready" = true ]; then
-        printf '%b[spawn]%b Run %bspawn%b to get started\n' "$GREEN" "$NC" "$BOLD" "$NC"
+        printf '%b[agentsea]%b Run %bagentsea%b to get started\n' "$GREEN" "$NC" "$BOLD" "$NC"
     else
-        printf '%b[spawn]%b To start using spawn, run:\n' "$GREEN" "$NC"
+        printf '%b[agentsea]%b To start using agentsea, run:\n' "$GREEN" "$NC"
         echo ""
         echo "    exec \$SHELL"
         echo ""
@@ -305,10 +305,10 @@ build_and_install() {
     fi
     INSTALL_DIR="${SPAWN_INSTALL_DIR:-${HOME}/.local/bin}"
     mkdir -p "${INSTALL_DIR}"
-    cp "${tmpdir}/cli.js" "${INSTALL_DIR}/spawn"
-    chmod +x "${INSTALL_DIR}/spawn"
+    cp "${tmpdir}/cli.js" "${INSTALL_DIR}/agentsea"
+    chmod +x "${INSTALL_DIR}/agentsea"
 
-    log_info "Installed spawn to ${INSTALL_DIR}/spawn"
+    log_info "Installed agentsea to ${INSTALL_DIR}/agentsea"
     ensure_in_path "${INSTALL_DIR}"
 }
 
@@ -372,13 +372,13 @@ fi
 
 ensure_min_bun_version
 
-log_step "Installing spawn via bun..."
+log_step "Installing agentsea via bun..."
 build_and_install
 
 # Persist install referrer (e.g. SPAWN_REF=reddit) so the CLI can report
 # attribution on first run. Only written once — never overwritten on updates.
 if [ -n "${SPAWN_REF:-}" ]; then
-    _ref_dir="${HOME}/.config/spawn"
+    _ref_dir="${HOME}/.config/agentsea"
     _ref_file="${_ref_dir}/.ref"
     if [ ! -f "${_ref_file}" ]; then
         mkdir -p "${_ref_dir}"

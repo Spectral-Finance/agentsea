@@ -5,7 +5,7 @@ import "./load-env.js";
 import type { Manifest } from "./manifest.js";
 
 import { readFileSync } from "node:fs";
-import { getErrorMessage, isString, toRecord } from "@grid-spawn/sdk";
+import { getErrorMessage, isString, toRecord } from "@agentsea/sdk";
 import pc from "picocolors";
 import pkg from "../package.json" with { type: "json" };
 import {
@@ -70,7 +70,7 @@ function handleError(err: unknown): never {
   captureError("cli_error", err);
   const msg = getErrorMessage(err);
   console.error(pc.red(`Error: ${msg}`));
-  console.error(`\nRun ${pc.cyan("grid-spawn help")} for usage information.`);
+  console.error(`\nRun ${pc.cyan("agentsea help")} for usage information.`);
   process.exit(1);
 }
 
@@ -164,25 +164,25 @@ function checkUnknownFlags(args: string[]): void {
     console.error(`    ${pc.cyan("--help, -h")}          Show help information`);
     console.error(`    ${pc.cyan("--version, -v")}       Show version`);
     console.error();
-    console.error(`  For ${pc.cyan("grid-spawn pick")}:`);
+    console.error(`  For ${pc.cyan("agentsea pick")}:`);
     console.error(`    ${pc.cyan("--default")}           Pre-selected value in the picker`);
     console.error();
-    console.error(`  For ${pc.cyan("grid-spawn link")}:`);
+    console.error(`  For ${pc.cyan("agentsea link")}:`);
     console.error(`    ${pc.cyan("-a, --agent")}         Agent running on the server`);
     console.error(`    ${pc.cyan("-c, --cloud")}         Cloud provider the server is on`);
     console.error(`    ${pc.cyan("-u, --user")}          SSH user (default: root)`);
     console.error(`    ${pc.cyan("--name")}              Custom name for this linked spawn`);
     console.error();
-    console.error(`  For ${pc.cyan("grid-spawn list")}:`);
+    console.error(`  For ${pc.cyan("agentsea list")}:`);
     console.error(`    ${pc.cyan("-a, --agent")}         Filter history by agent`);
     console.error(`    ${pc.cyan("-c, --cloud")}         Filter history by cloud`);
     console.error(`    ${pc.cyan("--clear")}             Clear all spawn history`);
     console.error();
-    console.error(`  For ${pc.cyan("grid-spawn delete")}:`);
+    console.error(`  For ${pc.cyan("agentsea delete")}:`);
     console.error(`    ${pc.cyan("--name <name>")}       Filter by server name or ID`);
     console.error(`    ${pc.cyan("--yes, -y")}           Skip confirmation (required for non-interactive)`);
     console.error();
-    console.error(`  Run ${pc.cyan("grid-spawn help")} for full usage information.`);
+    console.error(`  Run ${pc.cyan("agentsea help")} for full usage information.`);
     process.exit(1);
   }
 }
@@ -205,9 +205,9 @@ function showUnknownCommandError(name: string, manifest: Manifest): never {
     console.error(`  Did you mean ${suggestions.join(" or ")}?`);
   }
   console.error();
-  console.error(`  Run ${pc.cyan("grid-spawn agents")} to see available agents.`);
-  console.error(`  Run ${pc.cyan("grid-spawn clouds")} to see available clouds.`);
-  console.error(`  Run ${pc.cyan("grid-spawn help")} for usage information.`);
+  console.error(`  Run ${pc.cyan("agentsea agents")} to see available agents.`);
+  console.error(`  Run ${pc.cyan("agentsea clouds")} to see available clouds.`);
+  console.error(`  Run ${pc.cyan("agentsea help")} for usage information.`);
   process.exit(1);
 }
 
@@ -268,7 +268,7 @@ async function handleDefaultCommand(
         );
       } else {
         console.error(pc.red("Error: --headless requires both <agent> and <cloud>"));
-console.error(`\nUsage: ${pc.cyan("grid-spawn <agent> <cloud> --headless --output json")}`);
+console.error(`\nUsage: ${pc.cyan("agentsea <agent> <cloud> --headless --output json")}`);
       }
       process.exit(3);
     }
@@ -286,7 +286,7 @@ console.error(`\nUsage: ${pc.cyan("grid-spawn <agent> <cloud> --headless --outpu
   }
   if (dryRun) {
     console.error(pc.red("Error: --dry-run requires both <agent> and <cloud>"));
-console.error(`\nUsage: ${pc.cyan("grid-spawn <agent> <cloud> --dry-run")}`);
+console.error(`\nUsage: ${pc.cyan("agentsea <agent> <cloud> --dry-run")}`);
     process.exit(1);
   }
   if (prompt) {
@@ -318,7 +318,7 @@ console.error(`\nUsage: ${pc.cyan("grid-spawn <agent> <cloud> --dry-run")}`);
 /** Show "prompt requires cloud" error and suggest available clouds for the agent */
 async function suggestCloudsForPrompt(agent: string): Promise<void> {
   console.error(pc.red("Error: --prompt requires both <agent> and <cloud>"));
-  console.error(`\nUsage: ${pc.cyan(`grid-spawn ${agent} <cloud> --prompt "your prompt here"`)}`);
+  console.error(`\nUsage: ${pc.cyan(`agentsea ${agent} <cloud> --prompt "your prompt here"`)}`);
 
   const manifestResult = await asyncTryCatchIf(isNetworkError, () => loadManifest());
   if (manifestResult.ok) {
@@ -338,10 +338,10 @@ async function suggestCloudsForPrompt(agent: string): Promise<void> {
     const agentName = manifest.agents[resolvedAgent].name;
 console.error(`\nAvailable clouds for ${pc.bold(agentName)}:`);
     for (const c of clouds.slice(0, 5)) {
-      console.error(`  ${pc.cyan(`grid-spawn ${resolvedAgent} ${c} --prompt "..."`)}`);
+      console.error(`  ${pc.cyan(`agentsea ${resolvedAgent} ${c} --prompt "..."`)}`);
     }
     if (clouds.length > 5) {
-      console.error(`  Run ${pc.cyan(`grid-spawn ${resolvedAgent}`)} to see all ${clouds.length} clouds.`);
+      console.error(`  Run ${pc.cyan(`agentsea ${resolvedAgent}`)} to see all ${clouds.length} clouds.`);
     }
   }
 }
@@ -416,7 +416,7 @@ async function resolvePrompt(args: string[]): Promise<
       "--prompt",
       "-p",
     ],
-    'grid-spawn <agent> <cloud> --prompt "your prompt here"',
+    'agentsea <agent> <cloud> --prompt "your prompt here"',
   );
 
   const [promptFile, finalArgs] = extractFlagValue(
@@ -425,15 +425,15 @@ async function resolvePrompt(args: string[]): Promise<
       "--prompt-file",
       "-f",
     ],
-    "grid-spawn <agent> <cloud> --prompt-file instructions.txt",
+    "agentsea <agent> <cloud> --prompt-file instructions.txt",
   );
   filteredArgs = finalArgs;
 
   if (prompt && promptFile) {
     console.error(pc.red("Error: --prompt and --prompt-file cannot be used together"));
     console.error("\nUse one or the other:");
-    console.error(`  ${pc.cyan('grid-spawn <agent> <cloud> --prompt "your prompt here"')}`);
-    console.error(`  ${pc.cyan("grid-spawn <agent> <cloud> --prompt-file instructions.txt")}`);
+    console.error(`  ${pc.cyan('agentsea <agent> <cloud> --prompt "your prompt here"')}`);
+    console.error(`  ${pc.cyan("agentsea <agent> <cloud> --prompt-file instructions.txt")}`);
     process.exit(1);
   }
 
@@ -451,12 +451,12 @@ async function resolvePrompt(args: string[]): Promise<
 async function handleNoCommand(prompt: string | undefined, dryRun?: boolean): Promise<void> {
   if (dryRun) {
     console.error(pc.red("Error: --dry-run requires both <agent> and <cloud>"));
-console.error(`\nUsage: ${pc.cyan("grid-spawn <agent> <cloud> --dry-run")}`);
+console.error(`\nUsage: ${pc.cyan("agentsea <agent> <cloud> --dry-run")}`);
     process.exit(1);
   }
   if (prompt) {
     console.error(pc.red("Error: --prompt requires both <agent> and <cloud>"));
-console.error(`\nUsage: ${pc.cyan('grid-spawn <agent> <cloud> --prompt "your prompt here"')}`);
+console.error(`\nUsage: ${pc.cyan('agentsea <agent> <cloud> --prompt "your prompt here"')}`);
     process.exit(1);
   }
   if (isInteractiveTTY()) {
@@ -465,11 +465,11 @@ console.error(`\nUsage: ${pc.cyan('grid-spawn <agent> <cloud> --prompt "your pro
     console.error(pc.yellow("Cannot run interactive picker: not a terminal"));
     console.error(pc.dim("  (stdin/stdout is piped or redirected)"));
     console.error();
-    console.error(`  Launch directly:  ${pc.cyan("grid-spawn <agent> <cloud>")}`);
-    console.error(`  Rerun previous:   ${pc.cyan("grid-spawn list")}`);
-    console.error(`  Browse agents:    ${pc.cyan("grid-spawn agents")}`);
-    console.error(`  Browse clouds:    ${pc.cyan("grid-spawn clouds")}`);
-    console.error(`  Full help:        ${pc.cyan("grid-spawn help")}`);
+    console.error(`  Launch directly:  ${pc.cyan("agentsea <agent> <cloud>")}`);
+    console.error(`  Rerun previous:   ${pc.cyan("agentsea list")}`);
+    console.error(`  Browse agents:    ${pc.cyan("agentsea agents")}`);
+    console.error(`  Browse clouds:    ${pc.cyan("agentsea clouds")}`);
+    console.error(`  Full help:        ${pc.cyan("agentsea help")}`);
     console.error();
     process.exit(1);
   }
@@ -492,7 +492,7 @@ function formatCacheAge(seconds: number): string {
 }
 
 function showVersion(): void {
-  console.log(`grid-spawn v${VERSION}`);
+  console.log(`agentsea v${VERSION}`);
   const binPath = process.argv[1];
   if (binPath) {
     console.log(pc.dim(`  ${binPath}`));
@@ -504,8 +504,8 @@ function showVersion(): void {
   );
   const age = getCacheAge();
   console.log(pc.dim(`  manifest cache: ${formatCacheAge(age)}`));
-  console.log(pc.dim("  https://github.com/Spectral-Finance/grid-spawn"));
-  console.log(pc.dim(`  Run ${pc.cyan("grid-spawn feedback")} to tell us what to improve.`));
+  console.log(pc.dim("  https://github.com/Spectral-Finance/agentsea"));
+  console.log(pc.dim(`  Run ${pc.cyan("agentsea feedback")} to tell us what to improve.`));
 }
 
 const IMMEDIATE_COMMANDS: Record<string, () => void> = {
@@ -582,7 +582,7 @@ function warnExtraArgs(filteredArgs: string[], maxExpected: number): void {
   const extra = filteredArgs.slice(maxExpected);
   if (extra.length > 0) {
     console.error(pc.yellow(`Extra argument${extra.length > 1 ? "s" : ""} ignored: ${extra.join(", ")}`));
-    console.error(pc.dim(`  Usage: grid-spawn <agent> <cloud> [--prompt "..."]`));
+    console.error(pc.dim(`  Usage: agentsea <agent> <cloud> [--prompt "..."]`));
     console.error();
   }
 }
@@ -600,7 +600,7 @@ function parseListFilters(args: string[]): {
     if (args[i] === "-a" || args[i] === "--agent") {
       if (!args[i + 1] || args[i + 1].startsWith("-")) {
         console.error(pc.red(`Error: ${pc.bold(args[i])} requires an agent name`));
-console.error(`\nUsage: ${pc.cyan("grid-spawn list -a <agent>")}`);
+console.error(`\nUsage: ${pc.cyan("agentsea list -a <agent>")}`);
         process.exit(1);
       }
       agentFilter = args[i + 1];
@@ -608,7 +608,7 @@ console.error(`\nUsage: ${pc.cyan("grid-spawn list -a <agent>")}`);
     } else if (args[i] === "-c" || args[i] === "--cloud") {
       if (!args[i + 1] || args[i + 1].startsWith("-")) {
         console.error(pc.red(`Error: ${pc.bold(args[i])} requires a cloud name`));
-console.error(`\nUsage: ${pc.cyan("grid-spawn list -c <cloud>")}`);
+console.error(`\nUsage: ${pc.cyan("agentsea list -c <cloud>")}`);
         process.exit(1);
       }
       cloudFilter = args[i + 1];
@@ -740,7 +740,7 @@ async function dispatchSubcommand(cmd: string, filteredArgs: string[]): Promise<
   if ((cmd === "agents" || cmd === "clouds") && filteredArgs.length > 1 && !filteredArgs[1].startsWith("-")) {
     const name = filteredArgs[1];
     warnExtraArgs(filteredArgs, 2);
-    console.error(pc.dim(`Tip: next time you can just run ${pc.cyan(`grid-spawn ${name}`)}`));
+    console.error(pc.dim(`Tip: next time you can just run ${pc.cyan(`agentsea ${name}`)}`));
     console.error();
     await showInfoOrError(name);
     return;
@@ -775,8 +775,8 @@ async function dispatchVerbAlias(
     return;
   }
   console.error(pc.red(`Error: ${pc.bold(cmd)} requires an agent and cloud`));
-console.error(`\nUsage: ${pc.cyan("grid-spawn <agent> <cloud>")}`);
-  console.error(pc.dim(`  The "${cmd}" keyword is optional -- just use ${pc.cyan("grid-spawn <agent> <cloud>")} directly.`));
+console.error(`\nUsage: ${pc.cyan("agentsea <agent> <cloud>")}`);
+  console.error(pc.dim(`  The "${cmd}" keyword is optional -- just use ${pc.cyan("agentsea <agent> <cloud>")} directly.`));
   process.exit(1);
 }
 
@@ -792,7 +792,7 @@ async function dispatchSlashNotation(
   const parts = cmd.split("/");
   if (parts.length === 2 && parts[0] && parts[1]) {
     if (!headless) {
-      console.error(pc.dim(`Tip: use a space instead of slash: ${pc.cyan(`grid-spawn ${parts[0]} ${parts[1]}`)}`));
+      console.error(pc.dim(`Tip: use a space instead of slash: ${pc.cyan(`agentsea ${parts[0]} ${parts[1]}`)}`));
       console.error();
     }
     await handleDefaultCommand(parts[0], parts[1], prompt, dryRun, debug, headless, outputFormat);
@@ -1025,7 +1025,7 @@ async function main(): Promise<void> {
     "sandbox",
     "skills",
   ]);
-  const betaFeatures = extractAllFlagValues(filteredArgs, "--beta", "grid-spawn <agent> <cloud> --beta parallel");
+  const betaFeatures = extractAllFlagValues(filteredArgs, "--beta", "agentsea <agent> <cloud> --beta parallel");
   const userOptedIntoBeta = betaFeatures.length > 0 || process.env.SPAWN_FAST === "1";
   for (const flag of betaFeatures) {
     if (!VALID_BETA_FEATURES.has(flag)) {
@@ -1073,7 +1073,7 @@ async function main(): Promise<void> {
       "--model",
       "-m",
     ],
-    'grid-spawn <agent> <cloud> --model "openai/gpt-5.3-codex"',
+    'agentsea <agent> <cloud> --model "openai/gpt-5.3-codex"',
   );
   filteredArgs.splice(0, filteredArgs.length, ...modelFilteredArgs);
   if (modelFlag) {
@@ -1086,7 +1086,7 @@ async function main(): Promise<void> {
     [
       "--config",
     ],
-    "grid-spawn <agent> <cloud> --config setup.json",
+    "agentsea <agent> <cloud> --config setup.json",
   );
   filteredArgs.splice(0, filteredArgs.length, ...configFilteredArgs);
 
@@ -1124,7 +1124,7 @@ async function main(): Promise<void> {
     [
       "--steps",
     ],
-    "grid-spawn <agent> <cloud> --steps github,browser,telegram",
+    "agentsea <agent> <cloud> --steps github,browser,telegram",
   );
   filteredArgs.splice(0, filteredArgs.length, ...stepsFilteredArgs);
   if (stepsFlag !== undefined) {
@@ -1138,7 +1138,7 @@ async function main(): Promise<void> {
     [
       "--output",
     ],
-    "grid-spawn <agent> <cloud> --headless --output json",
+    "agentsea <agent> <cloud> --headless --output json",
   );
   // Replace filteredArgs contents in-place (splice + push to maintain reference)
   filteredArgs.splice(0, filteredArgs.length, ...outputFilteredArgs);
@@ -1146,7 +1146,7 @@ async function main(): Promise<void> {
   // Validate --output value
   if (outputFormat && outputFormat !== "json") {
     console.error(pc.red(`Error: --output only supports "json" (got "${outputFormat}")`));
-console.error(`\nUsage: ${pc.cyan("grid-spawn <agent> <cloud> --headless --output json")}`);
+console.error(`\nUsage: ${pc.cyan("agentsea <agent> <cloud> --headless --output json")}`);
     process.exit(1);
   }
 
@@ -1156,7 +1156,7 @@ console.error(`\nUsage: ${pc.cyan("grid-spawn <agent> <cloud> --headless --outpu
     [
       "--name",
     ],
-    'grid-spawn <agent> <cloud> --name "my-dev-box"',
+    'agentsea <agent> <cloud> --name "my-dev-box"',
   );
   filteredArgs.splice(0, filteredArgs.length, ...nameFilteredArgs);
   if (nameFlag) {
@@ -1169,7 +1169,7 @@ console.error(`\nUsage: ${pc.cyan("grid-spawn <agent> <cloud> --headless --outpu
     [
       "--repo",
     ],
-    'grid-spawn <agent> <cloud> --repo "user/my-template"',
+    'agentsea <agent> <cloud> --repo "user/my-template"',
   );
   filteredArgs.splice(0, filteredArgs.length, ...repoFilteredArgs);
   if (repoFlag) {
@@ -1183,7 +1183,7 @@ console.error(`\nUsage: ${pc.cyan("grid-spawn <agent> <cloud> --headless --outpu
       "--zone",
       "--region",
     ],
-    "grid-spawn <agent> gcp --zone us-east1-b",
+    "agentsea <agent> gcp --zone us-east1-b",
   );
   filteredArgs.splice(0, filteredArgs.length, ...zoneFilteredArgs);
   if (zoneFlag) {
@@ -1200,7 +1200,7 @@ console.error(`\nUsage: ${pc.cyan("grid-spawn <agent> <cloud> --headless --outpu
       "--machine-type",
       "--size",
     ],
-    "grid-spawn <agent> gcp --machine-type e2-standard-4",
+    "agentsea <agent> gcp --machine-type e2-standard-4",
   );
   filteredArgs.splice(0, filteredArgs.length, ...sizeFilteredArgs);
   if (sizeFlag) {
@@ -1249,7 +1249,7 @@ console.error(`\nUsage: ${pc.cyan("grid-spawn <agent> <cloud> --headless --outpu
           );
         } else {
           console.error(pc.red("Error: --headless requires both <agent> and <cloud>"));
-console.error(`\nUsage: ${pc.cyan("grid-spawn <agent> <cloud> --headless --output json")}`);
+console.error(`\nUsage: ${pc.cyan("agentsea <agent> <cloud> --headless --output json")}`);
         }
         process.exit(3);
       }

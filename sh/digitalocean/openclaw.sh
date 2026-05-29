@@ -77,17 +77,18 @@ fi
 # Remote — download bundled digitalocean.js from GitHub release
 DO_JS=$(mktemp)
 trap 'rm -f "$DO_JS"' EXIT
-curl -fsSL --proto '=https' "https://github.com/Spectral-Finance/grid-spawn/releases/download/digitalocean-latest/digitalocean.js" -o "$DO_JS" \
+curl -fsSL --proto '=https' "https://github.com/Spectral-Finance/agentsea/releases/download/digitalocean-latest/digitalocean.js" -o "$DO_JS" \
     || { printf '\033[0;31mFailed to download digitalocean.js\033[0m\n' >&2; exit 1; }
 
-if [ -n "${GRID_SPAWN_BUNDLE_SHA256:-}" ]; then
+if [ -n "${AGENTSEA_BUNDLE_SHA256:-${GRID_SPAWN_BUNDLE_SHA256:-}}" ]; then
+    _expected="${AGENTSEA_BUNDLE_SHA256:-${GRID_SPAWN_BUNDLE_SHA256}}"
     if command -v sha256sum >/dev/null 2>&1; then
         _got=$(sha256sum "$DO_JS" | awk '{print $1}')
     else
         _got=$(shasum -a 256 "$DO_JS" | awk '{print $1}')
     fi
-    if [ "$_got" != "$GRID_SPAWN_BUNDLE_SHA256" ]; then
-        printf '\033[0;31mSHA256 mismatch for digitalocean.js (expected GRID_SPAWN_BUNDLE_SHA256; unset to skip check)\033[0m\n' >&2
+    if [ "$_got" != "$_expected" ]; then
+        printf '\033[0;31mSHA256 mismatch for digitalocean.js (expected AGENTSEA_BUNDLE_SHA256; unset to skip check)\033[0m\n' >&2
         exit 1
     fi
 fi

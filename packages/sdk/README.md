@@ -1,20 +1,20 @@
-# `@grid-spawn/sdk`
+# `@agentsea/sdk`
 
-Shared **Spawn manifest contract** and small runtime helpers for the marketing site and `grid-spawn` CLI.
+Shared **Spawn manifest contract** and small runtime helpers for the marketing site and `agentsea` CLI.
 
 ## What’s in the box
 
-- **Types** — `Manifest`, `AgentDef`, `CloudDef`, `SkillDef`, … (same manifest shape used by **`grid-spawn`** and Grid Spawn tooling).
+- **Types** — `Manifest`, `AgentDef`, `CloudDef`, `SkillDef`, … (same manifest shape used by **`agentsea`** and AgentSea tooling).
 - **Pure helpers** — `parseJsonObj`, `Result` / `tryCatch` / `asyncTryCatch`, `isPlainObject`, `isString`, …
-- **Node loader** (`@grid-spawn/sdk/node`) — `loadManifest()` reads, in order:
+- **Node loader** (`@agentsea/sdk/node`) — `loadManifest()` reads, in order:
 
-  1. `GRID_SPAWN_MANIFEST` (absolute path), if set and valid
-  2. `GRID_SPAWN_ROOT/manifest.json` when `GRID_SPAWN_ROOT` points at a checkout (same as CLI dotenv resolution)
+  1. `AGENTSEA_MANIFEST` (absolute path), if set and valid — legacy: `GRID_SPAWN_MANIFEST`
+  2. `AGENTSEA_ROOT/manifest.json` when `AGENTSEA_ROOT` points at a checkout (same as CLI dotenv resolution) — legacy: `GRID_SPAWN_ROOT`
   3. The nearest `manifest.json` walking up from `process.cwd()` (max 10 segments)
-  4. `https://raw.githubusercontent.com/Spectral-Finance/grid-spawn/main/manifest.json`
-  5. `~/.cache/grid-spawn/manifest.json` stale cache
+  4. `https://raw.githubusercontent.com/Spectral-Finance/agentsea/main/manifest.json`
+  5. `~/.cache/agentsea/manifest.json` stale cache
 
-Runtime is **Node + browser-safe**: import types and pure helpers from `@grid-spawn/sdk`; import `loadManifest` only from **`@grid-spawn/sdk/node`** (uses `node:fs`).
+Runtime is **Node + browser-safe**: import types and pure helpers from `@agentsea/sdk`; import `loadManifest` only from **`@agentsea/sdk/node`** (uses `node:fs`).
 
 ## What is *not* here
 

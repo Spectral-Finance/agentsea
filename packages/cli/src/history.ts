@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { getErrorMessage } from "@grid-spawn/sdk";
+import { getErrorMessage } from "@agentsea/sdk";
 import * as v from "valibot";
 import { getHistoryPath, getProvisionRunsDir, getSpawnDir } from "./shared/paths.js";
 import {
@@ -227,7 +227,7 @@ function atomicWriteJson(filePath: string, data: unknown): void {
   renameSync(tmpPath, filePath);
 }
 
-/** Sidecar checkpoint so a crash after VM create can still be recovered (`grid-spawn resume --recover`). */
+/** Sidecar checkpoint so a crash after VM create can still be recovered (`agentsea resume --recover`). */
 export function writeProvisionCheckpoint(record: SpawnRecord): void {
   if (!record.id) {
     return;

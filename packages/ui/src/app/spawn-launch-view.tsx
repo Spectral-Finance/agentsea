@@ -6,12 +6,12 @@ import { memo } from "react";
 
 import { CloudLogo, LocalMachineLogo } from "./cloud-logos";
 import {
-  GRID_SPAWN_INSTALL_URL,
-  GRID_SPAWN_PUBLIC_ORIGIN,
+  AGENTSEA_INSTALL_URL,
+  AGENTSEA_PUBLIC_ORIGIN,
   THE_GRID_EXTERNAL_URL,
 } from "./home-public-constants";
 import { SpawnCopyBlock } from "./spawn-copy-block";
-import { WHY_GRID_SPAWN_CARDS } from "./why-grid-spawn-cards";
+import { WHY_AGENTSEA_CARDS } from "./why-agentsea-cards";
 import styles from "./spawn-launch-view.module.scss";
 
 export type SpawnLaunchViewProps = {
@@ -34,11 +34,11 @@ function cloudSummaryLogo(cloudSlug: string) {
 }
 
 function buildSpawnSnippet(agentSlug: string, cloudSlug: string): string {
-  return `# Install Grid Spawn
-curl -fsSL ${GRID_SPAWN_INSTALL_URL} | bash
+  return `# Install AgentSea
+curl -fsSL ${AGENTSEA_INSTALL_URL} | bash
 
 # Launch
-grid-spawn ${agentSlug} ${cloudSlug}`;
+agentsea ${agentSlug} ${cloudSlug}`;
 }
 
 function hoodSteps(cloudSlug: string) {
@@ -50,7 +50,7 @@ function hoodSteps(cloudSlug: string) {
       },
       {
         title: "Authenticate",
-        body: "Prompts for your The Grid API key and saves it under ~/.config/grid-spawn/ when you confirm.",
+        body: "Prompts for your The Grid API key and saves it under ~/.config/agentsea/ when you confirm.",
       },
       {
         title: "Configure",
@@ -97,11 +97,11 @@ export const SpawnLaunchView = memo(function SpawnLaunchViewComp({
   const spawnSnippet = buildSpawnSnippet(agentSlug, cloudSlug);
   const steps = hoodSteps(cloudSlug);
 
-  const withoutCliSnippet = `bash <(curl -fsSL ${GRID_SPAWN_PUBLIC_ORIGIN}/${cloudSlug}/${agentSlug}.sh)`;
+  const withoutCliSnippet = `bash <(curl -fsSL ${AGENTSEA_PUBLIC_ORIGIN}/${cloudSlug}/${agentSlug}.sh)`;
 
-  const cliRefSnippet = `grid-spawn                              # Interactive picker
-grid-spawn ls                            # List your spawns
-grid-spawn matrix                        # Agent x cloud matrix`;
+  const cliRefSnippet = `agentsea                              # Interactive picker
+agentsea ls                            # List your deployments
+agentsea matrix                        # Agent x cloud matrix`;
 
   return (
     <div className={styles["page"]}>
@@ -158,7 +158,7 @@ grid-spawn matrix                        # Agent x cloud matrix`;
             3
           </span>
           <h2 id="spawn-step-title" className={styles["sectionHead__title"]}>
-            Spawn
+            Launch
           </h2>
         </div>
 
@@ -208,10 +208,10 @@ grid-spawn matrix                        # Agent x cloud matrix`;
 
       <section className={styles["band"]} aria-labelledby="why-title">
         <h2 id="why-title" className={styles["bandTitle"]}>
-          Why Grid Spawn?
+          Why AgentSea?
         </h2>
         <div className={styles["whyGrid"]}>
-          {WHY_GRID_SPAWN_CARDS.slice(0, 2).map((c) => (
+          {WHY_AGENTSEA_CARDS.slice(0, 2).map((c) => (
             <div key={c.title} className={styles["whyCard"]}>
               <h3 className={styles["whyCard__h"]}>{c.title}</h3>
               <p className={styles["whyCard__p"]}>{c.body}</p>

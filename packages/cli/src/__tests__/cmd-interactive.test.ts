@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
-import { asyncTryCatch, isString } from "@grid-spawn/sdk";
+import { asyncTryCatch, isString } from "@agentsea/sdk";
 import { loadManifest } from "../manifest.js";
 import { createConsoleMocks, createMockManifest, mockClackPrompts, restoreMocks } from "./test-helpers";
 
@@ -255,7 +255,7 @@ describe("cmdInteractive", () => {
       await asyncTryCatch(() => cmdInteractive());
 
       const infoCalls = mockLogInfo.mock.calls.map((c: unknown[]) => c.join(" "));
-      expect(infoCalls.some((msg: string) => msg.includes("grid-spawn matrix"))).toBe(true);
+      expect(infoCalls.some((msg: string) => msg.includes("agentsea matrix"))).toBe(true);
     });
   });
 
@@ -325,7 +325,7 @@ describe("cmdInteractive", () => {
       const infoCalls = mockLogInfo.mock.calls.map((c: unknown[]) => c.join(" "));
       const hintMsg = infoCalls.find((msg: string) => msg.includes("Next time"));
       expect(hintMsg).toBeDefined();
-      expect(hintMsg).toContain("grid-spawn claude sprite");
+      expect(hintMsg).toContain("agentsea claude sprite");
     });
 
     it("should show outro message before handing off", async () => {

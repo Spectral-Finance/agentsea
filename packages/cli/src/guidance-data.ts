@@ -5,7 +5,7 @@
 
 import pc from "picocolors";
 
-import { GRID_SPAWN_CLI } from "./shared/cli-invocation.js";
+import { AGENTSEA_CLI } from "./shared/cli-invocation.js";
 interface SignalEntry {
   header: string;
   causes: string[];
@@ -58,7 +58,7 @@ export const EXIT_CODE_GUIDANCE: Record<number, ExitCodeEntry> = {
     ],
     includeDashboard: false,
     specialHandling: (cloud) => [
-      `  - Cloud-specific CLI tools (run ${pc.cyan(`${GRID_SPAWN_CLI} ${cloud}`)} for details)`,
+      `  - Cloud-specific CLI tools (run ${pc.cyan(`${AGENTSEA_CLI} ${cloud}`)} for details)`,
     ],
   },
   126: {
@@ -66,14 +66,14 @@ export const EXIT_CODE_GUIDANCE: Record<number, ExitCodeEntry> = {
     lines: [
       "  - A downloaded binary may lack execute permissions",
       "  - The script may require root/sudo access",
-      `  - Report it if this persists: ${pc.cyan("https://github.com/Spectral-Finance/grid-spawn/issues")}`,
+      `  - Report it if this persists: ${pc.cyan("https://github.com/Spectral-Finance/agentsea/issues")}`,
     ],
     includeDashboard: false,
   },
   2: {
     header: "Shell syntax or argument error. This is likely a bug in the script.",
     lines: [
-      `  Report it at: ${pc.cyan("https://github.com/Spectral-Finance/grid-spawn/issues")}`,
+      `  Report it at: ${pc.cyan("https://github.com/Spectral-Finance/agentsea/issues")}`,
     ],
     includeDashboard: false,
   },

@@ -1,4 +1,4 @@
-# Grid Spawn — operator checklist
+# AgentSea — operator checklist
 
 Use this list when replacing vendor placeholders with first-party Spectral defaults.
 

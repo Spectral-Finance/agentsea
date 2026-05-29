@@ -8,7 +8,7 @@ import type { AgentConfig } from "./agents.js";
 import type { SshTunnelHandle } from "./ssh.js";
 
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
-import { getErrorMessage } from "@grid-spawn/sdk";
+import { getErrorMessage } from "@agentsea/sdk";
 import pc from "picocolors";
 import * as v from "valibot";
 import {
@@ -39,7 +39,7 @@ import { sleep, startSshTunnel } from "./ssh.js";
 import { logT3PairingHandoff, startT3PairingBrowserWatcher } from "./t3-config.js";
 import { buildCloudOrchestratorForResume } from "./resume-cloud-factory.js";
 import { ensureSshKeys, getSshKeyOpts } from "./ssh-keys.js";
-import { GRID_SPAWN_CLI } from "./cli-invocation.js";
+import { AGENTSEA_CLI } from "./cli-invocation.js";
 import { captureEvent, setTelemetryContext } from "./telemetry.js";
 import { GRID_INFERENCE_DEFAULT_MODEL_ID, VENDOR_AGENT_IMAGE_REGISTRY } from "./vendor-routing.js";
 import {
@@ -157,7 +157,7 @@ export function normalizeRepoUrl(input: string): string | null {
 
 /** Docker container name used by --beta docker deployments. */
 export const DOCKER_CONTAINER_NAME = "spawn-agent";
-/** Docker registry hosting Grid Spawn agent images (see todo.md until first-party mirrors exist). */
+/** Docker registry hosting AgentSea agent images (see todo.md until first-party mirrors exist). */
 export const DOCKER_REGISTRY = VENDOR_AGENT_IMAGE_REGISTRY;
 
 /** Wrap a command to run inside the Docker container instead of the host. */
@@ -287,7 +287,7 @@ export async function installSpawnCli(runner: CloudRunner): Promise<void> {
     "curl -fsSL https://spawn.thegrid.ai/cli/install.sh | bash",
   ].join("; ");
   const result = await asyncTryCatch(() =>
-    withRetry(`${GRID_SPAWN_CLI} CLI install`, () => wrapSshCall(runner.runServer(installCmd)), 2, 5),
+    withRetry(`${AGENTSEA_CLI} CLI install`, () => wrapSshCall(runner.runServer(installCmd)), 2, 5),
   );
   if (!result.ok) {
     logWarn("Spawn CLI install failed — recursive spawning will not be available on this VM");
@@ -319,17 +319,17 @@ export async function delegateCloudCredentials(runner: CloudRunner): Promise<voi
     if (existsSync(cloudConfigPath)) {
       filesToDelegate.push({
         localPath: cloudConfigPath,
-        remotePath: `~/.config/grid-spawn/${cloud}.json`,
+        remotePath: `~/.config/agentsea/${cloud}.json`,
       });
     }
   }
 
-  // Saved The Grid API key (~/.config/grid-spawn/thegrid.json) for child spawns
+  // Saved The Grid API key (~/.config/agentsea/thegrid.json) for child spawns
   const orConfigPath = getSpawnCloudConfigPath("thegrid");
   if (existsSync(orConfigPath)) {
     filesToDelegate.push({
       localPath: orConfigPath,
-      remotePath: "~/.config/grid-spawn/thegrid.json",
+      remotePath: "~/.config/agentsea/thegrid.json",
     });
   }
 
@@ -340,7 +340,7 @@ export async function delegateCloudCredentials(runner: CloudRunner): Promise<voi
 
   // Ensure config dir exists on VM
   const mkdirResult = await asyncTryCatch(() =>
-    runner.runServer("mkdir -p ~/.config/grid-spawn && chmod 700 ~/.config/grid-spawn"),
+    runner.runServer("mkdir -p ~/.config/agentsea && chmod 700 ~/.config/agentsea"),
   );
   if (!mkdirResult.ok) {
     logWarn("Could not create config directory on VM");
@@ -423,7 +423,7 @@ export interface OrchestrationOptions {
 }
 
 /**
- * Load a preferred model from ~/.config/grid-spawn/preferences.json.
+ * Load a preferred model from ~/.config/agentsea/preferences.json.
  * Format: { "models": { "codex": "<Grid catalogue id>", "openclaw": "<Grid catalogue id>" } }
  * Returns null if no preference is set or the file doesn't exist.
  */
@@ -867,7 +867,7 @@ export async function resumeOrchestrationFromRecord(
   const cloud = options?.testResumeCloud ?? (await buildCloudOrchestratorForResume(record));
   if (!cloud) {
     throw new Error(
-      `Resume needs a saved SSH connection. Unsupported or missing cloud connection — try ${GRID_SPAWN_CLI} fix.`,
+      `Resume needs a saved SSH connection. Unsupported or missing cloud connection — try ${AGENTSEA_CLI} fix.`,
     );
   }
 
@@ -1358,10 +1358,10 @@ export async function runPostInstallPhase(
     }
     if (tunnelHandle) {
       logAlwaysInfo(
-        "Closing SSH tunnel to the dashboard — localhost URLs only work while grid-spawn holds the tunnel open.",
+        "Closing SSH tunnel to the dashboard — localhost URLs only work while agentsea holds the tunnel open.",
       );
       logAlwaysInfo(
-        `The gateway on your VM keeps running. Re-open the UI: run ${GRID_SPAWN_CLI} list → pick this server → "Open Dashboard".`,
+        `The gateway on your VM keeps running. Re-open the UI: run ${AGENTSEA_CLI} list → pick this server → "Open Dashboard".`,
       );
       tunnelHandle.stop();
     }
@@ -1413,7 +1413,7 @@ export async function runPostInstallPhase(
   if (isConnectionDrop(exitCode)) {
     process.stderr.write("\n");
     logWarn("Could not reconnect. Server is still running.");
-    logAlwaysInfo(`Reconnect manually: ${GRID_SPAWN_CLI} last`);
+    logAlwaysInfo(`Reconnect manually: ${AGENTSEA_CLI} last`);
   }
 
   if (tunnelHandle) {
@@ -1434,7 +1434,7 @@ export async function runPostInstallPhase(
 /**
  * Pull spawn history from a child VM and merge it into local history.
  * First tells the child to recursively pull from ITS children via
- * `grid-spawn pull-history`, then downloads the child's history.json.
+ * `agentsea pull-history`, then downloads the child's history.json.
  * This enables `spawn tree` to show the full recursive hierarchy.
  */
 async function pullChildHistory(runner: CloudRunner, parentSpawnId: string): Promise<void> {
@@ -1444,7 +1444,7 @@ async function pullChildHistory(runner: CloudRunner, parentSpawnId: string): Pro
     // Recursive pull: tell the child to pull from ALL its children first.
     const recursePull = await asyncTryCatch(() =>
       runner.runServer(
-        'export PATH="$HOME/.local/bin:$HOME/.bun/bin:$PATH"; grid-spawn pull-history 2>/dev/null || true',
+        'export PATH="$HOME/.local/bin:$HOME/.bun/bin:$PATH"; agentsea pull-history 2>/dev/null || true',
         120,
       ),
     );
@@ -1455,7 +1455,7 @@ async function pullChildHistory(runner: CloudRunner, parentSpawnId: string): Pro
     // Copy the child's history to a temp location then download
     const copyResult = await asyncTryCatch(() =>
       runner.runServer(
-        "cp ~/.config/grid-spawn/history.json /tmp/_spawn_history.json 2>/dev/null || cp ~/.config/grid-spawn/history.json /tmp/_spawn_history.json 2>/dev/null || echo '{}'  > /tmp/_spawn_history.json",
+        "cp ~/.config/agentsea/history.json /tmp/_spawn_history.json 2>/dev/null || cp ~/.config/agentsea/history.json /tmp/_spawn_history.json 2>/dev/null || echo '{}'  > /tmp/_spawn_history.json",
       ),
     );
     if (!copyResult.ok) {

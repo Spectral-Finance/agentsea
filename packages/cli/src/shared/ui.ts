@@ -6,7 +6,7 @@ import "../unicode-detect.js"; // Must run before @clack/prompts: configures TER
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import * as p from "@clack/prompts";
-import { isString } from "@grid-spawn/sdk";
+import { isString } from "@agentsea/sdk";
 import { parseJsonObj } from "./parse.js";
 import { getSpawnCloudConfigPath } from "./paths.js";
 import { asyncTryCatch, tryCatch, unwrapOr } from "./result.js";
@@ -202,7 +202,7 @@ function tryFirstNonLoopbackIpv4FromHostnameDashI(): string | undefined {
 }
 
 /**
- * When grid-spawn runs in WSL, Windows Edge/Chrome resolve 127.0.0.1 on the host while
+ * When agentsea runs in WSL, Windows Edge/Chrome resolve 127.0.0.1 on the host while
  * SSH -L listens inside the distro unless bound to all interfaces — use the WSL NIC IP instead.
  */
 export function rewriteLocalhostHttpUrlForWindowsBrowserFromWsl(url: string): string {

@@ -1,5 +1,5 @@
 /**
- * Loads `manifest.json` from env overrides → cwd walk → GitHub raw → ~/.cache/grid-spawn/manifest.json fallback.
+ * Loads `manifest.json` from env overrides → cwd walk → GitHub raw → ~/.cache/agentsea/manifest.json fallback.
  */
 
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -16,20 +16,23 @@ import {
 import { getErrorMessage, isPlainObject } from "../type-guards";
 import { getManifestCacheDir, getManifestCacheFile } from "./paths";
 
-export const REPO = "Spectral-Finance/grid-spawn" as const;
+export const REPO = "Spectral-Finance/agentsea" as const;
 export const RAW_BASE = `https://raw.githubusercontent.com/${REPO}/main` as const;
 export const VERSION_URL =
   `https://github.com/${REPO}/releases/download/cli-latest/version` as const;
 
 function defaultSpawnCdn(): string {
-  return process.env.GRID_SPAWN_CDN ?? "https://spawn.thegrid.ai";
+  return process.env.AGENTSEA_CDN ?? process.env.GRID_SPAWN_CDN ?? "https://spawn.thegrid.ai";
 }
 
-/** Primary CDN URL for bootstrap shell scripts (\`{CDN}/{cloud}/{agent}.sh\`). */
-export const GRID_SPAWN_CDN = defaultSpawnCdn() as string;
+/** Primary CDN URL for bootstrap shell scripts (`{CDN}/{cloud}/{agent}.sh`). */
+export const AGENTSEA_CDN = defaultSpawnCdn() as string;
+
+/** @deprecated alias — use AGENTSEA_CDN */
+export const GRID_SPAWN_CDN = AGENTSEA_CDN;
 
 /** @deprecated alias — legacy field naming from upstream manifest slices */
-export const SPAWN_CDN = GRID_SPAWN_CDN;
+export const SPAWN_CDN = AGENTSEA_CDN;
 
 const FETCH_TIMEOUT = 3_000;
 
@@ -171,18 +174,26 @@ function readManifestAt(localPath: string): Manifest | null {
   return result.ok ? result.data : null;
 }
 
+function manifestEnvOverride(): string | undefined {
+  return process.env.AGENTSEA_MANIFEST?.trim() || process.env.GRID_SPAWN_MANIFEST?.trim() || undefined;
+}
+
+function rootEnvOverride(): string | undefined {
+  return process.env.AGENTSEA_ROOT?.trim() || process.env.GRID_SPAWN_ROOT?.trim() || undefined;
+}
+
 function tryLoadLocalManifest(): Manifest | null {
   if (process.env.NODE_ENV === "test" || process.env.BUN_ENV === "test") {
     return null;
   }
 
-  const manifestOverride = process.env.GRID_SPAWN_MANIFEST?.trim();
+  const manifestOverride = manifestEnvOverride();
   if (manifestOverride) {
     const fromManifestEnv = readManifestAt(manifestOverride);
     if (fromManifestEnv) return fromManifestEnv;
   }
 
-  const rootOverride = process.env.GRID_SPAWN_ROOT?.trim();
+  const rootOverride = rootEnvOverride();
   if (rootOverride) {
     const fromRoot = readManifestAt(join(rootOverride, "manifest.json"));
     if (fromRoot) return fromRoot;
@@ -220,7 +231,7 @@ export async function loadManifest(forceRefresh = false): Promise<Manifest> {
     "Cannot load manifest: failed to fetch from GitHub and no local cache available.\n\n" +
       "How to fix:\n" +
       "  1. Check your internet connection\n" +
-      "  2. Run the UI from this repo or set GRID_SPAWN_ROOT to the checkout (or GRID_SPAWN_MANIFEST to manifest.json)\n" +
+      "  2. Run the UI from this repo or set AGENTSEA_ROOT to the checkout (or AGENTSEA_MANIFEST to manifest.json)\n" +
       `  3. Clear stale cache and retry:\n     rm -rf ${getManifestCacheDir()}`,
   );
 }

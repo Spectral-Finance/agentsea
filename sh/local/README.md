@@ -6,19 +6,19 @@ Run agents directly on your local machine without any cloud provisioning.
 
 ## Quick Start
 
-If you have [grid-spawn](https://github.com/Spectral-Finance/grid-spawn) installed:
+If you have [agentsea](https://github.com/Spectral-Finance/agentsea) installed:
 
 ```bash
-grid-spawn claude local
-grid-spawn openclaw local
-grid-spawn codex local
-grid-spawn opencode local
-grid-spawn kilocode local
-grid-spawn hermes local
-grid-spawn junie local
-grid-spawn cursor local
-grid-spawn pi local
-grid-spawn t3code local
+agentsea claude local
+agentsea openclaw local
+agentsea codex local
+agentsea opencode local
+agentsea kilocode local
+agentsea hermes local
+agentsea junie local
+agentsea cursor local
+agentsea pi local
+agentsea t3code local
 ```
 
 Or run directly without the CLI:

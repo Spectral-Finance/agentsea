@@ -1,4 +1,5 @@
 export {
+  AGENTSEA_CDN,
   GRID_SPAWN_CDN,
   RAW_BASE,
   REPO,

@@ -1,6 +1,6 @@
-# Grid Spawn E2E tests
+# AgentSea E2E tests
 
-End-to-end tests provision real cloud VMs (or sandboxes), run the Grid Spawn CLI headlessly, wait for remote install (`.spawnrc`), run per-agent checks and optional LLM “input tests”, then tear down.
+End-to-end tests provision real cloud VMs (or sandboxes), run the AgentSea CLI headlessly, wait for remote install (`.spawnrc`), run per-agent checks and optional LLM “input tests”, then tear down.
 
 ## DigitalOcean: all agents, one droplet at a time
 
@@ -10,7 +10,7 @@ Use this when you want to confirm every **manifest-implemented** agent on Digita
 
 - `bun` (used to run the CLI entrypoint)
 - `node` (only needed for `--agents-from-manifest`)
-- SSH private key on the **machine running E2E** that matches the droplet: same order as the CLI (`~/.ssh/spawn_ed25519`, then `id_ed25519` / `id_rsa` / `id_ecdsa`, up to three `-i` keys). Without this, post-provision checks that SSH to `root@<ip>` will fail even though `grid-spawn` connected during provision.
+- SSH private key on the **machine running E2E** that matches the droplet: same order as the CLI (`~/.ssh/spawn_ed25519`, then `id_ed25519` / `id_rsa` / `id_ecdsa`, up to three `-i` keys). Without this, post-provision checks that SSH to `root@<ip>` will fail even though `agentsea` connected during provision.
 - `THEGRID_API_KEY` — The Grid platform API key
 - One of: `DIGITALOCEAN_ACCESS_TOKEN`, `DIGITALOCEAN_API_TOKEN`, or `DO_API_TOKEN`
 - Optional: `MODEL_ID` (defaults for headless runs are set in [`lib/provision.sh`](lib/provision.sh))
@@ -60,7 +60,7 @@ node scripts/list-e2e-agents.mjs digitalocean --first openclaw
 ```bash
 export PATH="$HOME/.bun/bin:$PATH"
 ./sh/e2e/e2e.sh --cloud digitalocean --sequential \
-  --agents-from-manifest digitalocean --first-agent openclaw 2>&1 | tee /tmp/grid-spawn-e2e-full.log
+  --agents-from-manifest digitalocean --first-agent openclaw 2>&1 | tee /tmp/agentsea-e2e-full.log
 ```
 
 Recent fixes for common failures: DigitalOcean `cloud_exec` uses `~/.ssh/spawn_ed25519` (see driver); Kilocode E2E expects `KILO_PROVIDER_TYPE` from `vendor-routing.ts` (`opentouter`, not `openrouter`); Codex uses `wire_api = "responses"` for current Codex + The Grid (`model_providers.opentouter`).

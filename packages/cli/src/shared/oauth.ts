@@ -2,13 +2,13 @@
 //
 // Enterprise / automation: there is no browser OAuth for The Grid in this CLI yet.
 // Use a key issued from your The Grid organization (or CI secret) and set THEGRID_API_KEY,
-// or persist via ~/.config/grid-spawn/thegrid.json after a successful run.
+// or persist via ~/.config/agentsea/thegrid.json after a successful run.
 // For SSO-backed orgs, follow your internal docs for API key issuance until first-party
 // OAuth is wired here.
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { getErrorMessage, isString } from "@grid-spawn/sdk";
+import { getErrorMessage, isString } from "@agentsea/sdk";
 import { parseJsonObj } from "./parse.js";
 import { gridInferenceModelsUrl } from "./grid-api.js";
 import { getSpawnCloudConfigPath } from "./paths.js";

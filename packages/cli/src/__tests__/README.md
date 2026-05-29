@@ -1,6 +1,6 @@
 # CLI tests (`bun:test`)
 
-Grid Spawn mirrors [openrouter/spawn](https://github.com/OpenRouterTeam/spawn): **Bun's built-in test runner** (`bun:test`). Do not use Vitest for this package.
+AgentSea mirrors [openrouter/spawn](https://github.com/OpenRouterTeam/spawn): **Bun's built-in test runner** (`bun:test`). Do not use Vitest for this package.
 
 ```bash
 cd packages/cli
@@ -18,7 +18,7 @@ npm run test:cli
 
 ## Helpers
 
-[`test-helpers.ts`](./test-helpers.ts) — `createMockManifest`, `mockClackPrompts`, `mockBunSpawn`, `setupTestEnvironment` / `teardownTestEnvironment` (manifest disk cache lives under `grid-spawn/` inside `XDG_CACHE_HOME`).
+[`test-helpers.ts`](./test-helpers.ts) — `createMockManifest`, `mockClackPrompts`, `mockBunSpawn`, `setupTestEnvironment` / `teardownTestEnvironment` (manifest disk cache lives under `agentsea/` inside `XDG_CACHE_HOME`).
 
 ## P1 coverage (implemented)
 
@@ -42,5 +42,5 @@ Port / add tests comparable to openrouter for:
 - SSH (`ssh*.test.ts`, `ssh-runner.test.ts`)
 - Per-command coverage (`cmd-*-cov.test.ts`)
 - Specialized: `agent-setup-cov`, `agent-tarball`, `recursive-spawn`, `spawn-config`, `spawn-md`, `spawn-skill`, `star-prompt`, `update-check`, `auto-update`, `feature-flags`, `lifecycle-telemetry`, `billing-guidance`, `cursor-proxy`, etc.
-- **posthog-config** (grid-spawn-only)
+- **posthog-config** (agentsea-only)
 - UI / Next.js tests (skipped by initial scope)

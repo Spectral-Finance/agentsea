@@ -4,7 +4,7 @@
 
 import "../load-env.js";
 
-import { getErrorMessage } from "@grid-spawn/sdk";
+import { getErrorMessage } from "@agentsea/sdk";
 import { destroyServer, getDaytonaClient, runDaytonaCommand } from "./daytona.js";
 
 async function getRequiredClient() {

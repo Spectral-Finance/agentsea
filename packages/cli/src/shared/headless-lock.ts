@@ -42,7 +42,7 @@ export function acquireHeadlessProvisionLock(): void {
     const age = readLockAgeMs(lockPath);
     if (age !== null && age < STALE_MS) {
       logError(
-        "Another headless grid-spawn provision may still be running (lock file present).\n" +
+        "Another headless agentsea provision may still be running (lock file present).\n" +
           `  ${lockPath}\n` +
           "If the other process exited uncleanly, remove the lock after confirming no create is in flight.",
       );

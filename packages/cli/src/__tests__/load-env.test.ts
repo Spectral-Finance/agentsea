@@ -1,15 +1,15 @@
 /**
  * Tests for load-env.ts resolution rules (GRID_SPAWN_ROOT vs cwd walk).
- * Uses exported loadGridSpawnDotenv — dotenv does not override existing env vars.
+ * Uses exported loadAgentSeaDotenv — dotenv does not override existing env vars.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadGridSpawnDotenv } from "../load-env.js";
+import { loadAgentSeaDotenv } from "../load-env.js";
 
-describe("loadGridSpawnDotenv", () => {
+describe("loadAgentSeaDotenv", () => {
   let snapshot: Record<string, string | undefined>;
 
   beforeEach(() => {
@@ -37,7 +37,7 @@ describe("loadGridSpawnDotenv", () => {
       process.env.GRID_SPAWN_ROOT = dir;
       process.env.LOAD_ENV_TEST_A = "preset";
       delete process.env.LOAD_ENV_TEST_B;
-      loadGridSpawnDotenv();
+      loadAgentSeaDotenv();
       expect(process.env.LOAD_ENV_TEST_A).toBe("preset");
       expect(process.env.LOAD_ENV_TEST_B).toBe("also-from-file");
     } finally {
@@ -63,7 +63,7 @@ describe("loadGridSpawnDotenv", () => {
     const prev = process.cwd();
     try {
       process.chdir(nested);
-      loadGridSpawnDotenv();
+      loadAgentSeaDotenv();
       expect(process.env.LOAD_ENV_TEST_B).toBe("walked");
     } finally {
       process.chdir(prev);

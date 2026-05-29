@@ -5,7 +5,7 @@
 import type { CloudRunner } from "./agent-setup.js";
 
 import { validateScriptTemplate, wrapSshCall } from "./agent-setup.js";
-import { GRID_SPAWN_CLI } from "./cli-invocation.js";
+import { AGENTSEA_CLI } from "./cli-invocation.js";
 import { asyncTryCatchIf, isOperationalError } from "./result.js";
 import { logInfo, logWarn } from "./ui.js";
 
@@ -14,7 +14,7 @@ import { logInfo, logWarn } from "./ui.js";
 /** YAML frontmatter skill (Claude Code, Codex CLI, OpenClaw). */
 const SKILL_FRONTMATTER = `---
 name: spawn
-description: Create child cloud VMs with AI coding agents using the ${GRID_SPAWN_CLI} CLI
+description: Create child cloud VMs with AI coding agents using the ${AGENTSEA_CLI} CLI
 allowed-tools: Bash
 ---
 
@@ -23,12 +23,12 @@ allowed-tools: Bash
 /** Main skill body (shared by all agents except hermes). */
 const SKILL_BODY = `# Spawn — Create Child VMs
 
-You have the \`${GRID_SPAWN_CLI}\` CLI installed. Use it to provision cloud VMs with AI agents.
+You have the \`${AGENTSEA_CLI}\` CLI installed. Use it to provision cloud VMs with AI agents.
 
 ## Provision a Child VM
 
 \`\`\`bash
-${GRID_SPAWN_CLI} <agent> <cloud> --headless --output json --prompt "task description"
+${AGENTSEA_CLI} <agent> <cloud> --headless --output json --prompt "task description"
 \`\`\`
 
 **Agents:** claude, codex, cursor, openclaw, opencode, kilocode, hermes, junie, pi
@@ -57,9 +57,9 @@ ssh -o StrictHostKeyChecking=accept-new root@<ip> "bash -lc 'codex --quiet \\"yo
 
 ## Managing Children
 
-- \`${GRID_SPAWN_CLI} list --json\` — see running children
-- \`${GRID_SPAWN_CLI} delete --name <name> --yes\` — tear down a child VM (headless)
-- \`${GRID_SPAWN_CLI} tree\` — see the full spawn tree
+- \`${AGENTSEA_CLI} list --json\` — see running children
+- \`${AGENTSEA_CLI} delete --name <name> --yes\` — tear down a child VM (headless)
+- \`${AGENTSEA_CLI} tree\` — see the full spawn tree
 
 ## Context
 
@@ -73,10 +73,10 @@ const HERMES_SNIPPET = `
 
 ## Spawn Capability
 
-You have the \`${GRID_SPAWN_CLI}\` CLI for creating child cloud VMs with AI agents.
-Use \`${GRID_SPAWN_CLI} <agent> <cloud> --headless --output json --prompt "task"\` to delegate work.
+You have the \`${AGENTSEA_CLI}\` CLI for creating child cloud VMs with AI agents.
+Use \`${AGENTSEA_CLI} <agent> <cloud> --headless --output json --prompt "task"\` to delegate work.
 Available agents: claude, codex, cursor, openclaw, opencode, kilocode, hermes, junie, pi.
-Cloud credentials are pre-configured. Run \`${GRID_SPAWN_CLI} list --json\` to see children.
+Cloud credentials are pre-configured. Run \`${AGENTSEA_CLI} list --json\` to see children.
 \`--headless\` only provisions. To run a prompt on the child: \`ssh root@<ip> "bash -lc 'claude -p --dangerously-skip-permissions \\"prompt\\"'"\`. Always use \`bash -lc\` (binaries are in ~/.local/bin/).
 `;
 

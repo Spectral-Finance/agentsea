@@ -19,14 +19,14 @@ const dmMono = DM_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Grid Spawn — AI agents on any cloud | The Grid",
+  title: "AgentSea — AI agents on any cloud | The Grid",
   description:
-    "Pick an agent, pick a cloud, one CLI. Provision VMs, Grid API key, browser terminal — Grid Spawn for The Grid.",
+    "Pick an agent, pick a cloud, one CLI. Provision VMs, Grid API key, browser terminal — AgentSea for The Grid.",
   icons: {
     icon: "/thegrid-mark.svg",
   },
   openGraph: {
-    title: "Grid Spawn — AI agents on any cloud",
+    title: "AgentSea — AI agents on any cloud",
     description: "Pick an agent, pick a cloud, one CLI. Provision VMs wired to The Grid API.",
     type: "website",
   },
@@ -45,7 +45,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           dangerouslySetInnerHTML={{
             __html: `
               try {
-                var dark = JSON.parse(localStorage.getItem('grid-spawn-theme') ?? 'true');
+                var dark = JSON.parse(
+                  localStorage.getItem('agentsea-theme') ??
+                  localStorage.getItem('grid-spawn-theme') ??
+                  'true'
+                );
                 document.firstElementChild.classList.toggle('dark', !!dark);
               } catch (e) {
                 document.firstElementChild.classList.add('dark');

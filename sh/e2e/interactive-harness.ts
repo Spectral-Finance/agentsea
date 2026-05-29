@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
-// sh/e2e/interactive-harness.ts — AI-driven interactive E2E test for grid-spawn CLI
+// sh/e2e/interactive-harness.ts — AI-driven interactive E2E test for agentsea CLI
 //
-// Spawns grid-spawn in a real PTY (via `script` command), feeds terminal output to
+// Spawns agentsea in a real PTY (via `script` command), feeds terminal output to
 // The Grid (OpenAI-compatible chat), and types responses like a human user would.
 //
 // Usage: bun run sh/e2e/interactive-harness.ts <agent> <cloud>
@@ -164,8 +164,8 @@ interface UxIssue {
   suggestion: string;
 }
 
-const UX_REVIEW_SYSTEM = `You are a senior UX reviewer for a CLI tool called "grid-spawn" that provisions cloud VMs with AI agents. \
-A user ran "grid-spawn <agent> <cloud>" and the full terminal session was captured.
+const UX_REVIEW_SYSTEM = `You are a senior UX reviewer for a CLI tool called "agentsea" that provisions cloud VMs with AI agents. \
+A user ran "agentsea <agent> <cloud>" and the full terminal session was captured.
 
 Your job is to find the WORST UX problems only — the kind that would make a real user confused, frustrated, \
 or lose trust. Most sessions will be fine. Return an empty array unless something is genuinely bad.
@@ -255,7 +255,7 @@ function parseInput(response: string): Uint8Array | null {
 // ─── System prompt ──────────────────────────────────────────────────────
 
 function buildSystemPrompt(): string {
-  return `You are an automated QA tester driving the "grid-spawn" CLI through a terminal.
+  return `You are an automated QA tester driving the "agentsea" CLI through a terminal.
 Your job is to respond to prompts exactly like a human user would.
 
 CREDENTIALS (paste these EXACTLY when asked):
@@ -326,7 +326,7 @@ async function main(): Promise<void> {
   const cliEntry = `${repoRoot}/packages/cli/src/index.ts`;
   const command = `bun run ${cliEntry} ${agent} ${cloud}`;
 
-  process.stderr.write(`[harness] Starting: grid-spawn ${agent} ${cloud}\n`);
+  process.stderr.write(`[harness] Starting: agentsea ${agent} ${cloud}\n`);
   process.stderr.write(`[harness] Timeout: ${SESSION_TIMEOUT_MS / 1000}s\n`);
 
   const proc = spawnPty(command);

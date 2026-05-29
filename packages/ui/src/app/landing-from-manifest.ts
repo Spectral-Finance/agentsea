@@ -1,5 +1,5 @@
-import type { Manifest } from "@grid-spawn/sdk";
-import { agentKeys, cloudKeys, matrixStatus } from "@grid-spawn/sdk";
+import type { Manifest } from "@agentsea/sdk";
+import { agentKeys, cloudKeys, matrixStatus } from "@agentsea/sdk";
 
 import {
   CHAT_VERIFIED_AGENT_SLUGS,
@@ -87,7 +87,7 @@ export function homeAgentCloudAvailability(m: Manifest): Record<string, string[]
   return map;
 }
 
-/** Homepage agent card VM — populated from repo `manifest.json` via `@grid-spawn/sdk`. */
+/** Homepage agent card VM — populated from repo `manifest.json` via `@agentsea/sdk`. */
 
 export interface HomeAgentVm {
   slug: string;

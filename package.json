@@ -1,8 +1,8 @@
 {
-  "name": "grid-spawn",
+  "name": "agentsea",
   "version": "0.1.0",
   "private": true,
-  "description": "Grid Spawn — a multi-tenant control plane for AI agent VMs that wires The Grid (Cortex) into one-command spawns on cloud providers.",
+  "description": "AgentSea — a multi-tenant control plane for AI agent VMs that wires The Grid (Cortex) into one-command spawns on cloud providers.",
   "workspaces": [
     "packages/*"
   ],
@@ -12,20 +12,20 @@
     }
   },
   "scripts": {
-    "dev": "npm run dev --workspace=@grid-spawn/ui",
-    "dev:clean": "npm run dev:clean --workspace=@grid-spawn/ui",
+    "dev": "npm run dev --workspace=@agentsea/ui",
+    "dev:clean": "npm run dev:clean --workspace=@agentsea/ui",
     "build": "npm run build --workspaces --if-present",
-    "build:cli": "npm run build --workspace=@grid-spawn/cli",
-    "dev:cli": "npm run build:cli && npm run start --workspace=@grid-spawn/cli",
-    "grid-spawn": "npm exec --workspace=@grid-spawn/cli -- grid-spawn",
+    "build:cli": "npm run build --workspace=@agentsea/cli",
+    "dev:cli": "npm run build:cli && npm run start --workspace=@agentsea/cli",
+    "agentsea": "npm exec --workspace=@agentsea/cli -- agentsea",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "format": "prettier --check \"packages/*/src/**/*.{ts,tsx,scss,json,md}\" \"packages/*/README.md\" \"README.md\" \"manifest.json\"",
     "format:fix": "prettier --write \"packages/*/src/**/*.{ts,tsx,scss,json,md}\" \"packages/*/README.md\" \"README.md\" \"manifest.json\"",
     "test": "npm run test --workspaces --if-present",
-    "test:cli": "npm run test --workspace=@grid-spawn/cli",
-    "test:cli:integration": "npm run test:integration --workspace=@grid-spawn/cli",
-    "test:cli:e2e:do": "npm run test:e2e:do --workspace=@grid-spawn/cli",
+    "test:cli": "npm run test --workspace=@agentsea/cli",
+    "test:cli:integration": "npm run test:integration --workspace=@agentsea/cli",
+    "test:cli:e2e:do": "npm run test:e2e:do --workspace=@agentsea/cli",
     "e2e:do:sequential:manifest": "bash ./sh/e2e/e2e.sh --cloud digitalocean --sequential --agents-from-manifest digitalocean --first-agent openclaw"
   },
   "devDependencies": {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
-import { asyncTryCatch, isString } from "@grid-spawn/sdk";
+import { asyncTryCatch, isString } from "@agentsea/sdk";
 import { loadManifest } from "../manifest.js";
 import { createConsoleMocks, createMockManifest, mockClackPrompts, restoreMocks } from "./test-helpers";
 
@@ -136,7 +136,7 @@ describe("Commands Error Paths", () => {
       expect(errorCalls.some((msg: string) => msg.includes("Unknown agent"))).toBe(true);
 
       const infoCalls = mockLogInfo.mock.calls.map((c: unknown[]) => c.join(" "));
-      expect(infoCalls.some((msg: string) => msg.includes("grid-spawn agents"))).toBe(true);
+      expect(infoCalls.some((msg: string) => msg.includes("agentsea agents"))).toBe(true);
     });
 
     it("should exit with error and suggest spawn clouds for unknown cloud", async () => {
@@ -147,7 +147,7 @@ describe("Commands Error Paths", () => {
       expect(errorCalls.some((msg: string) => msg.includes("Unknown cloud"))).toBe(true);
 
       const infoCalls = mockLogInfo.mock.calls.map((c: unknown[]) => c.join(" "));
-      expect(infoCalls.some((msg: string) => msg.includes("grid-spawn clouds"))).toBe(true);
+      expect(infoCalls.some((msg: string) => msg.includes("agentsea clouds"))).toBe(true);
     });
   });
 
@@ -161,7 +161,7 @@ describe("Commands Error Paths", () => {
 
       const infoCalls = mockLogInfo.mock.calls.map((c: unknown[]) => c.join(" "));
       // Should suggest sprite as an alternative
-      expect(infoCalls.some((msg: string) => msg.includes("grid-spawn codex sprite"))).toBe(true);
+      expect(infoCalls.some((msg: string) => msg.includes("agentsea codex sprite"))).toBe(true);
       // codex has 1 implemented cloud (sprite)
       expect(infoCalls.some((msg: string) => msg.includes("1 cloud"))).toBe(true);
     });
@@ -368,7 +368,7 @@ describe("Commands Error Paths", () => {
 
       const infoCalls = mockLogInfo.mock.calls.map((c: unknown[]) => c.join(" "));
       expect(infoCalls.some((msg: string) => msg.includes('"codex" is an agent'))).toBe(true);
-      expect(infoCalls.some((msg: string) => msg.includes("grid-spawn <agent> <cloud>"))).toBe(true);
+      expect(infoCalls.some((msg: string) => msg.includes("agentsea <agent> <cloud>"))).toBe(true);
     });
 
     it("should tell user when agent arg is actually a cloud (not swappable)", async () => {
@@ -379,7 +379,7 @@ describe("Commands Error Paths", () => {
 
       const infoCalls = mockLogInfo.mock.calls.map((c: unknown[]) => c.join(" "));
       expect(infoCalls.some((msg: string) => msg.includes('"hetzner" is a cloud provider'))).toBe(true);
-      expect(infoCalls.some((msg: string) => msg.includes("grid-spawn <agent> <cloud>"))).toBe(true);
+      expect(infoCalls.some((msg: string) => msg.includes("agentsea <agent> <cloud>"))).toBe(true);
     });
   });
 });

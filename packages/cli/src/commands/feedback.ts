@@ -13,7 +13,7 @@ export async function cmdFeedback(args: string[]): Promise<void> {
   if (!message) {
     if (!isInteractiveTTY()) {
       console.error(pc.red("Error: Please provide your feedback message."));
-      console.error(`\nUsage: ${pc.cyan('grid-spawn feedback "your feedback here"')}`);
+      console.error(`\nUsage: ${pc.cyan('agentsea feedback "your feedback here"')}`);
       process.exit(1);
     }
 

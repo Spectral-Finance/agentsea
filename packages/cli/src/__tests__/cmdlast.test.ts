@@ -3,7 +3,7 @@ import type { SpawnRecord } from "../history.js";
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { asyncTryCatch } from "@grid-spawn/sdk";
+import { asyncTryCatch } from "@agentsea/sdk";
 import { createConsoleMocks, createMockManifest, mockClackPrompts, restoreMocks } from "./test-helpers";
 
 /**
@@ -109,7 +109,7 @@ describe("cmdLast", () => {
       await cmdLast();
 
       const info = logInfoOutput();
-      expect(info).toContain("grid-spawn");
+      expect(info).toContain("agentsea");
       expect(info).toMatch(/<agent>/);
       expect(info).toMatch(/<cloud>/);
     });

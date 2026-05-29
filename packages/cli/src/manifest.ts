@@ -1,5 +1,5 @@
 /**
- * Thin shim — `@grid-spawn/sdk` owns manifest types + disk/network loading.
+ * Thin shim — `@agentsea/sdk` owns manifest types + disk/network loading.
  */
 
 export type {
@@ -9,7 +9,7 @@ export type {
   McpServerConfig,
   SkillAgentConfig,
   SkillDef,
-} from "@grid-spawn/sdk";
+} from "@agentsea/sdk";
 
 export {
   RAW_BASE,
@@ -25,4 +25,4 @@ export {
   loadManifest,
   matrixStatus,
   stripDangerousKeys,
-} from "@grid-spawn/sdk/node";
+} from "@agentsea/sdk/node";

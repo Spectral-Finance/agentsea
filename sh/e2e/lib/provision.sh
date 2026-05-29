@@ -27,10 +27,10 @@ provision_agent() {
     return 1
   fi
 
-  # Abandoned ~/.config/grid-spawn/runs/headless-provision.lock blocks every headless provision
+  # Abandoned ~/.config/agentsea/runs/headless-provision.lock blocks every headless provision
   # for up to 45m (see packages/cli/src/shared/headless-lock.ts). E2E often kills bun without
   # SIGTERM, so release the lock when the recorded holder PID is not running.
-  local _hlock="${HOME}/.config/grid-spawn/runs/headless-provision.lock"
+  local _hlock="${HOME}/.config/agentsea/runs/headless-provision.lock"
   if [ -f "${_hlock}" ]; then
     local _hold_pid
     _hold_pid=$(head -n1 "${_hlock}" 2>/dev/null | tr -d ' \t\r\n' || true)

@@ -17,7 +17,7 @@ import { getHistoryPath } from "../shared/paths.js";
 import { asyncTryCatchIf, isOperationalError, tryCatch } from "../shared/result.js";
 import { SSH_BASE_OPTS, SSH_INTERACTIVE_OPTS, spawnInteractive, startSshTunnel } from "../shared/ssh.js";
 import { ensureSshKeys, getSshKeyOpts } from "../shared/ssh-keys.js";
-import { GRID_SPAWN_CLI } from "../shared/cli-invocation.js";
+import { AGENTSEA_CLI } from "../shared/cli-invocation.js";
 import {
   issueT3PairingBrowserUrl,
   logT3PairingHandoff,
@@ -188,7 +188,7 @@ export async function cmdConnect(connection: VMConnection, agentKey?: string): P
     p.log.error(`Security validation failed: ${getErrorMessage(connectValidation.error)}`);
     p.log.info("Your spawn history file may be corrupted or tampered with.");
     p.log.info(`Location: ${getHistoryPath()}`);
-    p.log.info(`To fix: edit the file and remove the invalid entry, or run '${GRID_SPAWN_CLI} list --clear'`);
+    p.log.info(`To fix: edit the file and remove the invalid entry, or run '${AGENTSEA_CLI} list --clear'`);
     process.exit(1);
   }
 
@@ -218,7 +218,7 @@ export async function cmdConnect(connection: VMConnection, agentKey?: string): P
     p.log.step(`Connecting to Daytona sandbox ${pc.bold(connection.server_name || connection.server_id)}...`);
     const { buildInteractiveSshArgs } = await import("../daytona/daytona.js");
     const args = await buildInteractiveSshArgs(connection.server_id);
-    return runInteractiveCommand(args[0], args.slice(1), "Daytona SSH connection failed", `${GRID_SPAWN_CLI} last`);
+    return runInteractiveCommand(args[0], args.slice(1), "Daytona SSH connection failed", `${AGENTSEA_CLI} last`);
   }
 
   // Handle SSH connections
@@ -268,7 +268,7 @@ export async function cmdEnterAgent(
     p.log.error(`Security validation failed: ${getErrorMessage(enterValidation.error)}`);
     p.log.info("Your spawn history file may be corrupted or tampered with.");
     p.log.info(`Location: ${getHistoryPath()}`);
-    p.log.info(`To fix: edit the file and remove the invalid entry, or run '${GRID_SPAWN_CLI} list --clear'`);
+    p.log.info(`To fix: edit the file and remove the invalid entry, or run '${AGENTSEA_CLI} list --clear'`);
     process.exit(1);
   }
 
@@ -368,7 +368,7 @@ export async function cmdEnterAgent(
       p.log.error(`Security validation failed: ${getErrorMessage(tunnelValidation.error)}`);
       p.log.info("Your spawn history file may be corrupted or tampered with.");
       p.log.info(`Location: ${getHistoryPath()}`);
-      p.log.info(`To fix: edit the file and remove the invalid entry, or run '${GRID_SPAWN_CLI} list --clear'`);
+      p.log.info(`To fix: edit the file and remove the invalid entry, or run '${AGENTSEA_CLI} list --clear'`);
       process.exit(1);
     }
 
@@ -472,7 +472,7 @@ export async function cmdOpenDashboard(connection: VMConnection, agentKey?: stri
     p.log.error(`Security validation failed: ${getErrorMessage(tunnelValidation.error)}`);
     p.log.info("Your spawn history file may be corrupted or tampered with.");
     p.log.info(`Location: ${getHistoryPath()}`);
-    p.log.info(`To fix: edit the file and remove the invalid entry, or run '${GRID_SPAWN_CLI} list --clear'`);
+    p.log.info(`To fix: edit the file and remove the invalid entry, or run '${AGENTSEA_CLI} list --clear'`);
     return;
   }
 
