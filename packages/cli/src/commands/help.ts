@@ -100,8 +100,8 @@ function getHelpExamplesSection(): string {
 
 function getHelpAuthSection(): string {
   return `${pc.bold("AUTHENTICATION")}
-  All agents use The Grid platform for LLM access. Get your API key at:
-  ${pc.cyan("https://thegrid.ai (API keys dashboard)")}
+  All agents use The Grid consumption API for LLM access (not trading keys). Create one at:
+  ${pc.cyan("https://app.thegrid.ai")}
 
   For non-interactive use, set environment variables:
   ${pc.dim("THEGRID_API_KEY")}=sk-or-v1-... agentsea claude sprite
@@ -128,7 +128,7 @@ function getHelpTroubleshootingSection(): string {
 
 function getHelpEnvVarsSection(): string {
   return `${pc.bold("ENVIRONMENT VARIABLES")}
-  ${pc.cyan("THEGRID_API_KEY")}        The Grid platform API key (all agents require this)
+  ${pc.cyan("THEGRID_API_KEY")}        The Grid consumption API key (not trading; all agents require this)
   ${pc.cyan("MODEL_ID")}                  Override agent's default LLM model (or use --model flag; skips catalogue picker)
   ${pc.cyan("SPAWN_SKIP_MODEL_PROMPT=1")} Skip interactive model picker (${pc.cyan("--headless")} already implies no prompts)
   ${pc.cyan("SPAWN_NO_UPDATE_CHECK=1")}   Skip auto-update check on startup

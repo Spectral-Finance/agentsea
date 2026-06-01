@@ -1,8 +1,7 @@
 import type { BillingConfig } from "../shared/billing-guidance.js";
 
-/** Opens add-payment modal and skips billing questionnaire (AgentSea + DO context). */
-export const DIGITALOCEAN_BILLING_ADD_PAYMENT_URL =
-  "https://cloud.digitalocean.com/account/billing?defer-onboarding-for=or&open-add-payment-method=true";
+/** DigitalOcean billing page (user completes onboarding / payment there). */
+export const DIGITALOCEAN_BILLING_ADD_PAYMENT_URL = "https://cloud.digitalocean.com/account/billing";
 
 export const digitaloceanBilling: BillingConfig = {
   billingUrl: DIGITALOCEAN_BILLING_ADD_PAYMENT_URL,

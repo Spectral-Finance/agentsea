@@ -157,7 +157,7 @@ function buildCredentialStatusLines(manifest: Manifest, cloud: string): string[]
   const cloudUrl = manifest.clouds[cloud].url;
 
   const lines = [
-    formatCredStatusLine("THEGRID_API_KEY", "https://thegrid.ai (API keys dashboard)"),
+    formatCredStatusLine("THEGRID_API_KEY", "https://app.thegrid.ai (consumption API key, not trading)"),
   ];
 
   for (let i = 0; i < authVars.length; i++) {

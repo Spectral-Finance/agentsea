@@ -19,11 +19,13 @@ import { isInteractiveTTY } from "../commands/shared.js";
 
 const DO_PROFILE_URL = "https://cloud.digitalocean.com/account/profile";
 const DO_DROPLETS_URL = "https://cloud.digitalocean.com/droplets";
+const DO_SUPPORT_URL = "https://cloud.digitalocean.com/support";
 
 /** Ordered blocker codes returned by {@link evaluateDigitalOceanReadiness}. */
 export type ReadinessBlockerCode =
   | "do_auth"
   | "email_unverified"
+  | "account_locked"
   | "payment_required"
   | "ssh_missing"
   | "grid_api_key_missing"
@@ -32,12 +34,17 @@ export type ReadinessBlockerCode =
 export interface ReadinessState {
   status: "READY" | "BLOCKED";
   blockers: ReadinessBlockerCode[];
+  /** Raw DO account status from GET /v2/account (active, warning, locked). */
+  accountStatus?: string;
+  /** Human-readable message from GET /v2/account when status is not active. */
+  accountStatusMessage?: string;
 }
 
 /** Resolution order: fix billing before SSH registration — DO often rejects key upload until payment is set up. */
 const BLOCKER_ORDER: ReadinessBlockerCode[] = [
   "do_auth",
   "email_unverified",
+  "account_locked",
   "payment_required",
   "ssh_missing",
   "grid_api_key_missing",
@@ -61,6 +68,13 @@ async function hasValidGridApiKey(): Promise<boolean> {
     return true;
   }
   return false;
+}
+
+function logAccountStatusMessage(message: string | undefined): void {
+  const trimmed = message?.trim();
+  if (trimmed) {
+    logWarn(trimmed);
+  }
 }
 
 /**
@@ -98,8 +112,10 @@ export async function evaluateDigitalOceanReadiness(_agentName: string): Promise
     blockers.push("email_unverified");
   }
 
-  // `locked` = billing suspended; `warning` = account needs attention (often payment verification before first resource)
-  if (snapshot.status === "locked" || snapshot.status === "warning") {
+  if (snapshot.status === "locked") {
+    blockers.push("account_locked");
+  } else if (snapshot.status === "warning") {
+    // warning often means payment/onboarding still needed before first resource
     blockers.push("payment_required");
   }
 
@@ -115,16 +131,23 @@ export async function evaluateDigitalOceanReadiness(_agentName: string): Promise
     return {
       status: "READY",
       blockers: [],
+      accountStatus: snapshot.status,
     };
   }
 
   return {
     status: "BLOCKED",
     blockers: sortBlockers(blockers),
+    accountStatus: snapshot.status,
+    accountStatusMessage: snapshot.status_message,
   };
 }
 
-async function resolveFirstBlocker(first: ReadinessBlockerCode, agentName: string): Promise<void> {
+async function resolveFirstBlocker(
+  first: ReadinessBlockerCode,
+  agentName: string,
+  state: ReadinessState,
+): Promise<void> {
   switch (first) {
     case "do_auth": {
       logAlwaysStep("Connect your DigitalOcean account...");
@@ -143,8 +166,18 @@ async function resolveFirstBlocker(first: ReadinessBlockerCode, agentName: strin
       await prompt("Press Enter after verifying your email to re-check...");
       break;
     }
+    case "account_locked": {
+      logAlwaysStep("Your DigitalOcean team is locked — adding a payment method will not unlock it.");
+      logAccountStatusMessage(state.accountStatusMessage);
+      logAlwaysInfo("Open a support ticket so DigitalOcean can review your account:");
+      logAlwaysInfo(`  ${DO_SUPPORT_URL}`);
+      openBrowser(DO_SUPPORT_URL);
+      await prompt("Press Enter after DigitalOcean support unlocks your account to re-check (or Ctrl+C to exit)...");
+      break;
+    }
     case "payment_required": {
       logAlwaysStep("Your DigitalOcean account needs billing attention.");
+      logAccountStatusMessage(state.accountStatusMessage);
       await handleBillingError(digitaloceanBilling);
       break;
     }
@@ -155,7 +188,7 @@ async function resolveFirstBlocker(first: ReadinessBlockerCode, agentName: strin
       break;
     }
     case "grid_api_key_missing": {
-      logAlwaysStep("Add a valid The Grid API key to continue.");
+      logAlwaysStep("Add a valid The Grid consumption API key to continue.");
       await getOrPromptApiKey(agentName, "digitalocean");
       break;
     }
@@ -218,7 +251,12 @@ export async function runDigitalOceanReadinessGate(opts: { agentName: string }):
         console.log(JSON.stringify(state));
       } else {
         logError(`DigitalOcean readiness blocked: ${state.blockers.join(", ")}`);
-        logAlwaysInfo(`Billing: ${DIGITALOCEAN_BILLING_ADD_PAYMENT_URL}`);
+        logAccountStatusMessage(state.accountStatusMessage);
+        if (state.blockers.includes("account_locked")) {
+          logAlwaysInfo(`Support: ${DO_SUPPORT_URL}`);
+        } else {
+          logAlwaysInfo(`Billing: ${DIGITALOCEAN_BILLING_ADD_PAYMENT_URL}`);
+        }
         if (attemptedNonInteractiveSshRegistration && state.blockers.includes("ssh_missing")) {
           const pubPath = getSpawnKey().pubPath;
           logAlwaysInfo(
@@ -243,11 +281,20 @@ export async function runDigitalOceanReadinessGate(opts: { agentName: string }):
     previousTopBlocker = first;
 
     if (sameTopBlockerRepeats >= 2) {
-      logError(
-        "Readiness is still blocked after several attempts. " +
-          "If DigitalOcean rejected SSH key upload, add a payment method first or register your public key in Account → Security.",
-      );
-      logAlwaysInfo(`Billing: ${DIGITALOCEAN_BILLING_ADD_PAYMENT_URL}`);
+      if (first === "account_locked") {
+        logError(
+          "Your DigitalOcean team is still locked. Adding a payment method cannot fix this — contact DigitalOcean support.",
+        );
+        logAccountStatusMessage(state.accountStatusMessage);
+        logAlwaysInfo(`Support: ${DO_SUPPORT_URL}`);
+      } else {
+        logError(
+          "Readiness is still blocked after several attempts. " +
+            "If DigitalOcean rejected SSH key upload, add a payment method first or register your public key in Account → Security.",
+        );
+        logAccountStatusMessage(state.accountStatusMessage);
+        logAlwaysInfo(`Billing: ${DIGITALOCEAN_BILLING_ADD_PAYMENT_URL}`);
+      }
       await prompt("Press Enter after you've addressed this to re-check...");
       sameTopBlockerRepeats = 0;
     }
@@ -255,7 +302,7 @@ export async function runDigitalOceanReadinessGate(opts: { agentName: string }):
     if (first !== "do_auth") {
       p.log.warn(`Blocked: ${first.replace(/_/g, " ")}`);
     }
-    await resolveFirstBlocker(first, agentName);
+    await resolveFirstBlocker(first, agentName, state);
   }
 
   await ensureSshKey();

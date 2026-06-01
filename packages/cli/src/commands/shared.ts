@@ -576,7 +576,7 @@ export function collectMissingCredentials(authVars: string[], cloud?: string): s
 
 function getCredentialGuidance(cloud: string, onlyGridApiKey: boolean): string {
   if (onlyGridApiKey) {
-    return "You will be prompted for your Grid (THEGRID_API_KEY) during setup.";
+    return "You will be prompted for your Grid consumption API key (THEGRID_API_KEY) during setup.";
   }
   return `Run ${pc.cyan(`agentsea ${cloud}`)} for setup instructions.`;
 }
@@ -739,7 +739,7 @@ function checkAllCredentialsReady(auth: string): boolean {
 }
 
 function printAuthVariableStatus(authVars: string[], cloudUrl?: string): void {
-  console.log(formatAuthVarLine("THEGRID_API_KEY", "https://thegrid.ai (API keys dashboard)"));
+  console.log(formatAuthVarLine("THEGRID_API_KEY", "https://app.thegrid.ai (consumption API key, not trading)"));
   for (let i = 0; i < authVars.length; i++) {
     console.log(formatAuthVarLine(authVars[i], i === 0 ? cloudUrl : undefined));
   }
