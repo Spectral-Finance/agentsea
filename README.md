@@ -1,4 +1,4 @@
-# AgentSea
+# Agent Sea
 
 > **CLI-first agent VM launcher**, static-manifest Spawn-style architecture for **The Grid**: static repo-root **`manifest.json`**, **`agentsea`** provisions against **your** cloud accounts, **`sh/<cloud>/<agent>.sh`** userdata, local history under **`~/.config/agentsea/`** — **no Spawn web UI, no Spawn HTTP API.**
 
