@@ -31,6 +31,8 @@ import {
 } from "./ui.js";
 import {
   GRID_INFERENCE_DEFAULT_MODEL_ID,
+  OPENCLAW_GRID_MODEL_CONTEXT_WINDOW,
+  OPENCLAW_GRID_MODEL_MAX_TOKENS,
   OPENCLAW_GRID_PROVIDER_ID,
   VENDOR_CHAT_MODEL_DEFAULT,
   VENDOR_CODEX_MODEL_PROVIDER_KEY,
@@ -790,6 +792,20 @@ function openClawGridPrimaryModel(catalogModelId: string): string {
   return `${OPENCLAW_GRID_PROVIDER_ID}/${catalogModelId}`;
 }
 
+function openClawGridProviderModelEntry(catalogModelId: string): {
+  id: string;
+  name: string;
+  contextWindow: number;
+  maxTokens: number;
+} {
+  return {
+    id: catalogModelId,
+    name: `The Grid (${catalogModelId})`,
+    contextWindow: OPENCLAW_GRID_MODEL_CONTEXT_WINDOW,
+    maxTokens: OPENCLAW_GRID_MODEL_MAX_TOKENS,
+  };
+}
+
 /**
  * Register `models.providers.thegrid` for OpenClaw against The Grid Anthropic-compatible surface.
  * We avoid the OpenAI-compatible redirect path here because OpenClaw's transport SSRF policy
@@ -823,12 +839,12 @@ async function mergeOpenClawGridInferenceProvider(
     "cfg.models ||= {};",
     "cfg.models.mode = 'merge';",
     "cfg.models.providers = {",
-    "  [providerId]: { baseUrl: infer, apiKey: apiKeyPlain, api: 'anthropic-messages', models: [{ id: slug, name: 'The Grid (' + slug + ')' }] },",
+    `  [providerId]: { baseUrl: infer, apiKey: apiKeyPlain, api: 'anthropic-messages', models: [{ id: slug, name: 'The Grid (' + slug + ')', contextWindow: ${OPENCLAW_GRID_MODEL_CONTEXT_WINDOW}, maxTokens: ${OPENCLAW_GRID_MODEL_MAX_TOKENS} }] },`,
     "};",
     "cfg.agents ||= {}; cfg.agents.defaults ||= {}; cfg.agents.defaults.model ||= {};",
     "cfg.agents.defaults.model.primary = ocPrimary;",
     "cfg.agents.defaults.models ||= {};",
-    "cfg.agents.defaults.models[ocPrimary] = { alias: 'The Grid' };",
+    `cfg.agents.defaults.models[ocPrimary] = { alias: 'The Grid', params: { maxTokens: ${OPENCLAW_GRID_MODEL_MAX_TOKENS} } };`,
     "fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2)); fs.chmodSync(cfgPath, 0o600);",
   ].join(" ");
 
@@ -941,12 +957,7 @@ async function setupOpenclawConfig(
               baseUrl: openClawMessagesBase,
               apiKey,
               api: "anthropic-messages",
-              models: [
-                {
-                  id: catalogModelId,
-                  name: `The Grid (${catalogModelId})`,
-                },
-              ],
+              models: [openClawGridProviderModelEntry(catalogModelId)],
             },
           },
         },
@@ -958,6 +969,9 @@ async function setupOpenclawConfig(
             models: {
               [ocPrimary]: {
                 alias: "The Grid",
+                params: {
+                  maxTokens: OPENCLAW_GRID_MODEL_MAX_TOKENS,
+                },
               },
             },
             sandbox: {

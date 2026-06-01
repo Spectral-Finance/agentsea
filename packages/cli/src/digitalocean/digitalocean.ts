@@ -379,6 +379,7 @@ async function testDoToken(): Promise<boolean> {
 /** Parsed /v2/account fields for readiness checks (single source for snapshot). */
 export interface DoAccountSnapshot {
   status: string;
+  status_message: string;
   email_verified: boolean | undefined;
   droplet_limit: number;
 }
@@ -399,6 +400,7 @@ export async function fetchDoAccountSnapshot(): Promise<DoAccountSnapshot | null
     const ev = rec.email_verified;
     return {
       status: isString(rec.status) ? rec.status : "",
+      status_message: isString(rec.status_message) ? rec.status_message.trim() : "",
       email_verified: ev === false ? false : ev === true ? true : undefined,
       droplet_limit: isNumber(rec.droplet_limit) ? rec.droplet_limit : 0,
     };

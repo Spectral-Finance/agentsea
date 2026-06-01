@@ -16,6 +16,12 @@ import { asyncTryCatchIf, isFileError, isNetworkError, tryCatch } from "./result
 import { logDebug, logError, logInfo, logWarn, logAlwaysInfo, prompt, retryOrQuit } from "./ui.js";
 import { LEGACY_SAVED_API_KEY_CONFIG_STEM } from "./vendor-routing.js";
 
+/** AgentSea uses The Grid inference (`GET /v1/models`, chat) — consumption keys, not trading keys. */
+export const GRID_CONSUMPTION_API_KEY_PROMPT_LABEL =
+  "Paste your Grid consumption API key (not trading):";
+export const GRID_CONSUMPTION_API_KEY_HINT =
+  "Create a consumption API key at https://app.thegrid.ai — not a trading key.";
+
 // ─── Key Validation ──────────────────────────────────────────────────────────
 
 /** Validate THEGRID_API_KEY via Grid `GET /v1/models` (best-effort; skips on network errors). */
@@ -45,8 +51,9 @@ export async function verifyTheGridApiKey(apiKey: string): Promise<boolean> {
       return true;
     }
     if (resp.status === 401 || resp.status === 403) {
-      logError("The Grid API key is invalid or expired");
-      logError("Get a new key at: https://thegrid.ai (API keys dashboard)");
+      logError("The Grid consumption API key is invalid or expired");
+      logError("Trading keys cannot be used here — create a consumption key instead.");
+      logError(GRID_CONSUMPTION_API_KEY_HINT);
       return false;
     }
     return true; // unknown status = don't block
@@ -91,7 +98,7 @@ async function tryOauthFlow(callbackPort = 5180, agentSlug?: string, cloudSlug?:
   void callbackPort;
   void agentSlug;
   void cloudSlug;
-  logAlwaysInfo("Paste THEGRID_API_KEY or enter it below — browser OAuth for The Grid is not wired in this CLI yet.");
+  logAlwaysInfo(`${GRID_CONSUMPTION_API_KEY_HINT} Paste it below — browser OAuth for The Grid is not wired in this CLI yet.`);
   return null;
 }
 
@@ -158,7 +165,7 @@ async function promptAndValidateApiKey(): Promise<string | null> {
   let attempts = 0;
   while (attempts < 3) {
     attempts++;
-    const key = await prompt("Paste your Grid (THEGRID_API_KEY): ");
+    const key = await prompt(GRID_CONSUMPTION_API_KEY_PROMPT_LABEL);
     if (!key) {
       logError("API key cannot be empty");
       continue;
@@ -174,7 +181,7 @@ async function promptAndValidateApiKey(): Promise<string | null> {
     return key;
   }
   logError("Too many failed attempts.");
-  logError("Get your key from: https://thegrid.ai (API keys dashboard)");
+  logError(GRID_CONSUMPTION_API_KEY_HINT);
   return null;
 }
 
@@ -183,18 +190,19 @@ export async function getOrPromptApiKey(agentSlug?: string, cloudSlug?: string):
 
   // 1. Check env var
   if (process.env.THEGRID_API_KEY) {
-    logInfo("Using Grid API key from environment");
+    logAlwaysInfo("Using Grid API key from environment");
     if (await verifyTheGridApiKey(process.env.THEGRID_API_KEY)) {
       return process.env.THEGRID_API_KEY;
     }
     logWarn("Environment key failed validation, prompting for a new one...");
+    delete process.env.THEGRID_API_KEY;
   }
 
   // 2. Check saved key from a previous run (unless forcing re-auth via --reauth).
   if (process.env.SPAWN_REAUTH !== "1") {
     const savedKey = loadSavedTheGridApiKey();
     if (savedKey) {
-      logInfo("Using saved Grid API key");
+      logAlwaysInfo("Using saved Grid API key");
       if (await verifyTheGridApiKey(savedKey)) {
         process.env.THEGRID_API_KEY = savedKey;
         return savedKey;
@@ -217,7 +225,7 @@ export async function getOrPromptApiKey(agentSlug?: string, cloudSlug?: string):
       // OAuth failed — fall through to manual entry
       process.stderr.write("\n");
       logWarn("Browser-based login was not completed.");
-      logAlwaysInfo("Get your API key from: https://thegrid.ai (API keys dashboard)");
+      logAlwaysInfo(GRID_CONSUMPTION_API_KEY_HINT);
       process.stderr.write("\n");
 
       const manualKey = await promptAndValidateApiKey();

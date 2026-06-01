@@ -23,12 +23,16 @@ export const READINESS_CHECKLIST_ROWS: {
     label: "SSH key ready",
   },
   {
+    code: "account_locked",
+    label: "Account unlocked",
+  },
+  {
     code: "payment_required",
     label: "Payment method added",
   },
   {
     code: "grid_api_key_missing",
-    label: "The Grid API key",
+    label: "The Grid consumption API key",
   },
   {
     code: "droplet_limit",

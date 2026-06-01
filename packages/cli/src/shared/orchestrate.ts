@@ -472,7 +472,12 @@ function shouldOfferGridModelPicker(agent: AgentConfig, preference: string | nul
 }
 
 /** Resolve MODEL_ID → validated id; optionally prompt against `GET …/models` when interactive. */
-async function resolveProvisionModelId(agentName: string, agent: AgentConfig, apiKey: string): Promise<string | undefined> {
+async function resolveProvisionModelId(
+  agentName: string,
+  agent: AgentConfig,
+  apiKey: string,
+  authRetried = false,
+): Promise<string | undefined> {
   const preference = loadPreferredModel(agentName);
   let rawModelId = process.env.MODEL_ID || preference || agent.modelDefault;
   if (
@@ -494,6 +499,19 @@ async function resolveProvisionModelId(agentName: string, agent: AgentConfig, ap
     const catalog = await fetchGridModelCatalog(apiKey);
     if (catalog.authFailed) {
       logWarn("The Grid API key was rejected — check THEGRID_API_KEY (and THEGRID_API_URL if set).");
+      if (
+        !authRetried &&
+        isInteractiveTTY() &&
+        process.env.SPAWN_NON_INTERACTIVE !== "1" &&
+        process.env.SPAWN_HEADLESS !== "1"
+      ) {
+        logWarn(
+          "If you removed your key, unset THEGRID_API_KEY or run with SPAWN_REAUTH=1 — a stale key may still be exported from ~/.spawnrc in your shell.",
+        );
+        delete process.env.THEGRID_API_KEY;
+        const freshKey = await getOrPromptApiKey(agentName);
+        return resolveProvisionModelId(agentName, agent, freshKey, true);
+      }
     }
     if (catalog.entries.length > 0) {
       const catalogueIds = catalog.entries.map((entry) => entry.id);

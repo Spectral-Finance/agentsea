@@ -27,6 +27,10 @@ export const VENDOR_CHAT_MODEL_DEFAULT = GRID_INFERENCE_DEFAULT_MODEL_ID;
  */
 export const OPENCLAW_GRID_PROVIDER_ID = "thegrid";
 
+/** OpenClaw `anthropic-messages` provider models require explicit positive maxTokens (2026.5+). */
+export const OPENCLAW_GRID_MODEL_MAX_TOKENS = 8192;
+export const OPENCLAW_GRID_MODEL_CONTEXT_WINDOW = 200_000;
+
 /** Kilo Code / similar: env value for multi-provider routing slot. */
 export const VENDOR_KILO_PROVIDER_TYPE_VALUE = LLM_ROUTING_SLOT;
 
