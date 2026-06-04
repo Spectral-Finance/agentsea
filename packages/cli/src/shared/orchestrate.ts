@@ -24,6 +24,7 @@ import {
 } from "../history.js";
 import { offerGithubAuth, setupAutoUpdate, setupSecurityScan, wrapSshCall } from "./agent-setup.js";
 import { tryTarballInstall } from "./agent-tarball.js";
+import { getCdnOrigin } from "./cdn.js";
 import { generateEnvConfig } from "./agents.js";
 import { acquireHeadlessProvisionLock } from "./headless-lock.js";
 import { fetchGridModelCatalog } from "./grid-models.js";
@@ -284,7 +285,7 @@ export async function installAgentseaCli(runner: CloudRunner): Promise<void> {
     'export BUN_INSTALL="${BUN_INSTALL:-$HOME/.bun}"',
     'export PATH="$BUN_INSTALL/bin:$HOME/.local/bin:$HOME/.npm-global/bin:/.sprite/languages/bun/bin:/usr/local/bin:$PATH"',
     'if ! bun --version >/dev/null 2>&1; then curl -fsSL https://bun.sh/install | bash && export PATH="$HOME/.bun/bin:$PATH"; fi',
-    "curl -fsSL https://spawn.thegrid.ai/cli/install.sh | bash",
+    `curl -fsSL ${getCdnOrigin()}/cli/install.sh | bash`,
   ].join("; ");
   const result = await asyncTryCatch(() =>
     withRetry(`${AGENTSEA_CLI} CLI install`, () => wrapSshCall(runner.runServer(installCmd)), 2, 5),

@@ -7,6 +7,7 @@ import type { Result } from "./ui.js";
 import { unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { getErrorMessage } from "@agentsea/sdk";
+import { getCdnOrigin } from "./cdn.js";
 import { setupCursorProxy, startCursorProxy } from "./cursor-proxy.js";
 import { gridInferenceOverrideEnvLine, resolveGridAnthropicMessagesClientBase, resolveGridInferenceApiBase, resolveGridOpenClawMessagesBase } from "./grid-api.js";
 import { JUNIE_LAUNCH_SHELL_PREFIX, setupJunieConfig, startJunieLiteLlmProxy } from "./junie-config.js";
@@ -524,7 +525,7 @@ export async function offerGithubAuth(runner: CloudRunner, explicitlyRequested?:
     return;
   }
 
-  let ghCmd = "curl --proto '=https' -fsSL https://spawn.thegrid.ai/shared/github-auth.sh | bash";
+  let ghCmd = `curl --proto '=https' -fsSL ${getCdnOrigin()}/shared/github-auth.sh | bash`;
   // Upload the token to a remote temp file so it never appears in `ps auxe`
   // process listings. We use runner.uploadFile() (SCP) — the same proven
   // pattern as uploadConfigFile(). A heredoc won't work here because all

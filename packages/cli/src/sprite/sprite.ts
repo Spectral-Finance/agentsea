@@ -6,6 +6,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { dirname as posixDirname } from "node:path/posix";
 import { getErrorMessage } from "@agentsea/sdk";
+import { getCdnOrigin } from "../shared/cdn.js";
 import { AGENTSEA_CLI } from "../shared/cli-invocation.js";
 import { getUserHome } from "../shared/paths.js";
 import { asyncTryCatch } from "../shared/result.js";
@@ -717,7 +718,7 @@ export async function downloadFileSprite(remotePath: string, localPath: string):
  */
 export async function installSpriteKeepAlive(): Promise<void> {
   logStep("Installing Sprite keep-alive...");
-  const scriptUrl = "https://spawn.thegrid.ai/shared/sprite-keep-running.sh";
+  const scriptUrl = `${getCdnOrigin()}/shared/sprite-keep-running.sh`;
   const keepAliveResult = await asyncTryCatch(() =>
     runSprite(
       "mkdir -p ~/.local/bin && " +

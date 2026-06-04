@@ -9,7 +9,8 @@ import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { buildDashboardHint, EXIT_CODE_GUIDANCE, SIGNAL_GUIDANCE } from "../guidance-data.js";
 import { generateAgentseaId, getActiveServers, loadHistory, saveAgentseaRecord } from "../history.js";
-import { loadManifest, RAW_BASE, REPO, AGENTSEA_CDN } from "../manifest.js";
+import { loadManifest, RAW_BASE, REPO } from "../manifest.js";
+import { getCdnOrigin } from "../shared/cdn.js";
 import {
   validateConnectionIP,
   validateIdentifier,
@@ -195,7 +196,7 @@ export function showDryRunPreview(manifest: Manifest, agent: string, cloud: stri
   printDryRunSection("Agent", buildAgentLines(manifest.agents[agent]));
   printDryRunSection("Cloud", buildCloudLines(manifest.clouds[cloud]));
   printDryRunSection("Script", [
-    `  URL: ${AGENTSEA_CDN}/${cloud}/${agent}.sh`,
+    `  URL: ${getCdnOrigin()}/${cloud}/${agent}.sh`,
   ]);
 
   const envLines = buildEnvironmentLines(manifest, agent);
@@ -828,7 +829,7 @@ export async function execScript(
       console.error(`[run] Using local script: ${localScriptResolved}`);
     }
   } else {
-    const url = `https://spawn.thegrid.ai/${cloud}/${agent}.sh`;
+    const url = `${getCdnOrigin()}/${cloud}/${agent}.sh`;
     const ghUrl = `${RAW_BASE}/sh/${cloud}/${agent}.sh`;
 
     const dlResult = await asyncTryCatch(() => downloadScriptWithFallback(url, ghUrl));
@@ -1291,7 +1292,7 @@ export async function cmdRunHeadless(agent: string, cloud: string, opts: Headles
         console.error(`[headless] Using local script: ${localScriptResolved}`);
       }
     } else {
-      const url = `https://spawn.thegrid.ai/${resolvedCloud}/${resolvedAgent}.sh`;
+      const url = `${getCdnOrigin()}/${resolvedCloud}/${resolvedAgent}.sh`;
       const ghUrl = `${RAW_BASE}/sh/${resolvedCloud}/${resolvedAgent}.sh`;
 
       // Primary CDN fetch throws on a connection-level failure (DNS/unreachable),
