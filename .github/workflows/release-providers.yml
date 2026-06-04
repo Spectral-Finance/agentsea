@@ -1,0 +1,69 @@
+name: Release provider bundles
+
+# Builds each cloud provider bundle (packages/cli/src/<cloud>/main.ts → <cloud>.js)
+# and (re)publishes it as the `<cloud>.js` asset on the rolling `<cloud>-latest`
+# GitHub Release. Those assets are what `sh/<cloud>/<agent>.sh` downloads on the VM
+# (e.g. releases/download/local-latest/local.js), so they must stay in sync with
+# the source. Requires the repo to be public (assets are fetched unauthenticated).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/cli/**"
+      - "packages/sdk/**"
+      - "package.json"
+      - "package-lock.json"
+      - "scripts/build-providers.sh"
+      - ".github/workflows/release-providers.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-providers
+  cancel-in-progress: true
+
+jobs:
+  release-providers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.9"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build provider bundles
+        run: npm run build:providers
+
+      - name: Publish / refresh <cloud>-latest assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Keep in sync with scripts/build-providers.sh
+          for cloud in local digitalocean gcp aws hetzner daytona sprite; do
+            asset="packages/cli/dist/${cloud}.js"
+            if [ ! -s "$asset" ]; then
+              echo "::error::missing or empty bundle $asset"
+              exit 1
+            fi
+            tag="${cloud}-latest"
+            if gh release view "$tag" >/dev/null 2>&1; then
+              gh release upload "$tag" "$asset" --clobber
+            else
+              gh release create "$tag" "$asset" \
+                --title "agentsea ${cloud} provider (latest)" \
+                --notes "Rolling latest ${cloud} provider bundle (built from main). Consumed by sh/${cloud}/<agent>.sh."
+            fi
+          done
