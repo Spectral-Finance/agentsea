@@ -1,5 +1,6 @@
 import pc from "picocolors";
-import { REPO, AGENTSEA_CDN } from "../manifest.js";
+import { REPO } from "../manifest.js";
+import { getCdnOrigin } from "../shared/cdn.js";
 
 function getHelpUsageSection(): string {
   return `${pc.bold("USAGE")}
@@ -112,7 +113,7 @@ function getHelpAuthSection(): string {
 
 function getHelpInstallSection(): string {
   return `${pc.bold("INSTALL")}
-  curl -fsSL ${AGENTSEA_CDN}/cli/install.sh | bash`;
+  curl -fsSL ${getCdnOrigin()}/cli/install.sh | bash`;
 }
 
 function getHelpTroubleshootingSection(): string {

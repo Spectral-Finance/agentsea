@@ -115,6 +115,7 @@ describe("cmdRun happy-path pipeline", () => {
   let processExitSpy: ReturnType<typeof spyOn>;
   let historyDir: string;
   let originalAgentseaHome: string | undefined;
+  let originalAgentseaCdn: string | undefined;
 
   beforeEach(async () => {
     consoleMocks = createConsoleMocks();
@@ -139,12 +140,23 @@ describe("cmdRun happy-path pipeline", () => {
     });
     originalAgentseaHome = process.env.AGENTSEA_HOME;
     process.env.AGENTSEA_HOME = historyDir;
+    // Pin the CDN origin so script-download URLs are deterministic regardless of
+    // the built-in default or any install-time pin on the test machine.
+    originalAgentseaCdn = process.env.AGENTSEA_CDN;
+    process.env.AGENTSEA_CDN = "https://spawn.thegrid.ai";
   });
 
   afterEach(() => {
     global.fetch = originalFetch;
     processExitSpy.mockRestore();
     restoreMocks(consoleMocks.log, consoleMocks.error);
+
+    // Restore CDN origin
+    if (originalAgentseaCdn === undefined) {
+      delete process.env.AGENTSEA_CDN;
+    } else {
+      process.env.AGENTSEA_CDN = originalAgentseaCdn;
+    }
 
     // Clean up history directory
     process.env.AGENTSEA_HOME = originalAgentseaHome;

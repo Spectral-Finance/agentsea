@@ -8,7 +8,8 @@ import path from "node:path";
 import { getErrorMessage, hasStatus } from "@agentsea/sdk";
 import pc from "picocolors";
 import pkg from "../package.json" with { type: "json" };
-import { RAW_BASE, AGENTSEA_CDN, VERSION_URL } from "./manifest.js";
+import { RAW_BASE, VERSION_URL } from "./manifest.js";
+import { getCdnOrigin } from "./shared/cdn.js";
 import { PkgVersionSchema, parseJsonWith } from "./shared/parse.js";
 import { getUpdateCheckedPath, getUpdateFailedPath } from "./shared/paths.js";
 import { asyncTryCatchIf, isFileError, isNetworkError, tryCatch, tryCatchIf, unwrapOr } from "./shared/result.js";
@@ -290,8 +291,8 @@ function validateInstallScript(content: string, platform: "unix" | "windows"): v
 function performAutoUpdate(latestVersion: string, jsonOutput = false): void {
   printUpdateBanner(latestVersion);
 
-  const installUrl = getInstallScriptUrl(AGENTSEA_CDN);
-  const installCmd = getInstallCmd(AGENTSEA_CDN);
+  const installUrl = getInstallScriptUrl(getCdnOrigin());
+  const installCmd = getInstallCmd(getCdnOrigin());
 
   // When JSON output is active, redirect install script stdout to stderr to
   // avoid polluting stdout with [agentsea] install messages before the JSON result.

@@ -3,14 +3,15 @@ import { unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
-import { RAW_BASE, AGENTSEA_CDN, VERSION_URL } from "../manifest.js";
+import { RAW_BASE, VERSION_URL } from "../manifest.js";
+import { getCdnOrigin } from "../shared/cdn.js";
 import { parseJsonWith } from "../shared/parse.js";
 import { asyncTryCatch, isFileError, tryCatch, tryCatchIf } from "../shared/result.js";
 import { getInstallCmd, getInstallScriptUrl, isWindows } from "../shared/shell.js";
 import { getErrorMessage, PkgVersionSchema, VERSION } from "./shared.js";
 
-const INSTALL_URL = getInstallScriptUrl(AGENTSEA_CDN);
-const INSTALL_CMD = getInstallCmd(AGENTSEA_CDN);
+const INSTALL_URL = getInstallScriptUrl(getCdnOrigin());
+const INSTALL_CMD = getInstallCmd(getCdnOrigin());
 
 async function fetchRemoteVersion(): Promise<string> {
   // Primary: plain-text version file from GitHub release artifact (static URL)
