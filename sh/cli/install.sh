@@ -12,7 +12,12 @@
 set -eo pipefail
 
 AGENTSEA_REPO="Spectral-Finance/agentsea"
-AGENTSEA_CDN="https://spawn.thegrid.ai"
+# Origin this installer + the agentsea CLI fetch scripts from. Per-environment
+# deploys (dev/staging/prod) replace AGENTSEA_CDN_DEFAULT below at build time via
+# packages/ui/scripts/sync-cdn-public.sh (from NEXT_PUBLIC_AGENTSEA_PUBLIC_ORIGIN).
+# Users can override at runtime by exporting AGENTSEA_CDN before running this.
+AGENTSEA_CDN_DEFAULT="https://agentsea.dev.thegrid.ai"
+AGENTSEA_CDN="${AGENTSEA_CDN:-$AGENTSEA_CDN_DEFAULT}"
 AGENTSEA_RAW_BASE="https://raw.githubusercontent.com/${AGENTSEA_REPO}/main"
 MIN_BUN_VERSION="1.2.0"
 BUN_INSTALL_VERSION="1.3.9"
@@ -374,6 +379,15 @@ ensure_min_bun_version
 
 log_step "Installing agentsea via bun..."
 build_and_install
+
+# Pin the CDN origin this CLI was installed from so `agentsea` fetches scripts and
+# one-liners from the same environment (dev/staging/prod) without needing
+# AGENTSEA_CDN exported. The CLI reads this file (env var still takes precedence).
+_cdn_dir="${AGENTSEA_HOME:-${HOME}/.config/agentsea}"
+if mkdir -p "${_cdn_dir}" 2>/dev/null; then
+    printf '%s\n' "${AGENTSEA_CDN}" > "${_cdn_dir}/cdn-origin" 2>/dev/null \
+        && log_info "Pinned CDN origin: ${AGENTSEA_CDN}"
+fi
 
 # Persist install referrer (e.g. AGENTSEA_REF=reddit) so the CLI can report
 # attribution on first run. Only written once — never overwritten on updates.
