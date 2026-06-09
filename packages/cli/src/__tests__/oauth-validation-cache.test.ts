@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import {
   resetGridApiKeyValidationCacheForTests,
   setGridApiKeyValidationFetchForTests,
@@ -15,6 +15,7 @@ describe("verifyTheGridApiKey validation cache", () => {
   const prevIsTTY = process.stderr.isTTY;
 
   beforeEach(() => {
+    mock.restore();
     fetchCalls = 0;
     // npm test sets AGENTSEA_SKIP_API_VALIDATION=1; assignment is reliable on CI (delete is not).
     process.env.AGENTSEA_SKIP_API_VALIDATION = "0";

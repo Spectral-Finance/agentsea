@@ -1,23 +1,27 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 
+const VALID_GRID_KEY = `sk-or-v1-${"f".repeat(64)}`;
+
 describe("runDigitalOceanReadinessGate exit credentials", () => {
   const prevNodeEnv = process.env.NODE_ENV;
   const prevBunEnv = process.env.BUN_ENV;
   const prevApiKey = process.env.THEGRID_API_KEY;
+  const prevSkipValidation = process.env.AGENTSEA_SKIP_API_VALIDATION;
   const prevNonInteractive = process.env.AGENTSEA_NON_INTERACTIVE;
   const prevHeadless = process.env.AGENTSEA_HEADLESS;
-  let getOrPromptCalls = 0;
 
   beforeEach(() => {
-    getOrPromptCalls = 0;
+    mock.restore();
     delete process.env.NODE_ENV;
     delete process.env.BUN_ENV;
-    process.env.THEGRID_API_KEY = "cached-valid-key-abcdefgh";
+    process.env.THEGRID_API_KEY = VALID_GRID_KEY;
+    process.env.AGENTSEA_SKIP_API_VALIDATION = "1";
     delete process.env.AGENTSEA_NON_INTERACTIVE;
     delete process.env.AGENTSEA_HEADLESS;
   });
 
   afterEach(() => {
+    mock.restore();
     if (prevNodeEnv !== undefined) {
       process.env.NODE_ENV = prevNodeEnv;
     } else {
@@ -33,6 +37,11 @@ describe("runDigitalOceanReadinessGate exit credentials", () => {
     } else {
       delete process.env.THEGRID_API_KEY;
     }
+    if (prevSkipValidation !== undefined) {
+      process.env.AGENTSEA_SKIP_API_VALIDATION = prevSkipValidation;
+    } else {
+      delete process.env.AGENTSEA_SKIP_API_VALIDATION;
+    }
     if (prevNonInteractive !== undefined) {
       process.env.AGENTSEA_NON_INTERACTIVE = prevNonInteractive;
     } else {
@@ -46,14 +55,8 @@ describe("runDigitalOceanReadinessGate exit credentials", () => {
   });
 
   it("does not re-prompt for API key when env key is already valid", async () => {
-    mock.module("../shared/oauth.js", () => ({
-      getOrPromptApiKey: async () => {
-        getOrPromptCalls++;
-        return process.env.THEGRID_API_KEY ?? "";
-      },
-      loadSavedTheGridApiKey: () => null,
-      verifyTheGridApiKey: async () => true,
-    }));
+    // Never mock ../shared/oauth.js — mock.module replaces verifyTheGridApiKey globally
+    // and breaks oauth-validation-cache.test.ts when Bun runs files in parallel (CI).
     mock.module("../digitalocean/digitalocean.js", () => ({
       areSshKeysRegisteredOnDigitalOcean: async () => true,
       ensureDoToken: async () => {},
@@ -75,6 +78,6 @@ describe("runDigitalOceanReadinessGate exit credentials", () => {
 
     const { runDigitalOceanReadinessGate } = await import("../digitalocean/readiness.js");
     await runDigitalOceanReadinessGate({ agentName: "hermes" });
-    expect(getOrPromptCalls).toBe(0);
+    expect(process.env.THEGRID_API_KEY).toBe(VALID_GRID_KEY);
   });
 });
