@@ -1,5 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
-import { resetGridApiKeyValidationCacheForTests, verifyTheGridApiKey } from "../shared/oauth.js";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import {
+  resetGridApiKeyValidationCacheForTests,
+  setGridApiKeyValidationFetchForTests,
+  verifyTheGridApiKey,
+} from "../shared/oauth.js";
 
 const VALID_KEY = `sk-or-v1-${"c".repeat(64)}`;
 const OTHER_VALID_KEY = `sk-or-v1-${"d".repeat(64)}`;
@@ -12,11 +16,12 @@ describe("verifyTheGridApiKey validation cache", () => {
 
   beforeEach(() => {
     fetchCalls = 0;
-    delete process.env.AGENTSEA_SKIP_API_VALIDATION;
+    // npm test sets AGENTSEA_SKIP_API_VALIDATION=1; assignment is reliable on CI (delete is not).
+    process.env.AGENTSEA_SKIP_API_VALIDATION = "0";
     delete process.env.THEGRID_API_KEY;
     resetGridApiKeyValidationCacheForTests();
     Object.defineProperty(process.stderr, "isTTY", { value: false, configurable: true });
-    global.fetch = mock(() => {
+    setGridApiKeyValidationFetchForTests(() => {
       fetchCalls++;
       return Promise.resolve(new Response(JSON.stringify({ data: [] }), { status: 200 }));
     });
@@ -24,6 +29,7 @@ describe("verifyTheGridApiKey validation cache", () => {
 
   afterEach(() => {
     resetGridApiKeyValidationCacheForTests();
+    setGridApiKeyValidationFetchForTests(undefined);
     if (prevSkip !== undefined) {
       process.env.AGENTSEA_SKIP_API_VALIDATION = prevSkip;
     } else {

@@ -96,6 +96,18 @@ type GridApiKeyValidationCache = {
 
 let gridApiKeyValidationCache: GridApiKeyValidationCache | null = null;
 
+/** Override fetch for cache tests (Bun CI may not honor global.fetch mocks). */
+let gridApiKeyValidationFetchOverride: typeof fetch | undefined;
+
+/** @internal tests only */
+export function setGridApiKeyValidationFetchForTests(fetchFn: typeof fetch | undefined): void {
+  gridApiKeyValidationFetchOverride = fetchFn;
+}
+
+function gridApiKeyValidationFetch(): typeof fetch {
+  return gridApiKeyValidationFetchOverride ?? fetch;
+}
+
 async function hashGridApiKey(apiKey: string): Promise<string> {
   const encoded = new TextEncoder().encode(apiKey);
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", encoded));
@@ -134,7 +146,7 @@ export async function verifyTheGridApiKey(apiKey: string): Promise<boolean> {
     asyncTryCatchIf(isNetworkError, async () => {
       // Use the OpenAI-compatible models list — it returns 200 when the key is valid.
       // (`/auth/key` has been observed to 404 on production; models is the stable probe.)
-      const resp = await fetch(gridInferenceModelsUrl(), {
+      const resp = await gridApiKeyValidationFetch()(gridInferenceModelsUrl(), {
         headers: {
           Authorization: `Bearer ${apiKey}`,
         },
