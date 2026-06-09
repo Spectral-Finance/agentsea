@@ -1533,7 +1533,7 @@ export async function cmdRun(
   }
 
   captureEvent("name_prompt_shown");
-  const agentseaName = await promptAgentseaName();
+  const agentseaName = await promptAgentseaName(agent);
   captureEvent("name_entered");
 
   // If a name was given, check whether an active instance with that name already
