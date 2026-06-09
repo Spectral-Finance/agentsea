@@ -19,6 +19,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "npx --yes bun@1.3.9 test",
     "test:integration": "npx --yes bun@1.3.9 test src/__tests__/e2e",
+    "test:e2e:local:config": "bash ../../sh/e2e/local/e2e-local.sh --tier config",
+    "test:e2e:local": "bash ../../sh/e2e/local/e2e-local.sh --tier integration",
     "test:e2e:do": "npx --yes bun@1.3.9 test src/__tests__/e2e/digitalocean-agent-flows.test.ts",
     "test:watch": "npx --yes bun@1.3.9 test --watch",
     "compile": "npx --yes bun@1.3.9 build src/index.ts --compile --outfile agentsea"
