@@ -1,0 +1,85 @@
+name: Release CLI
+
+# Builds the agentsea CLI bundle and (re)publishes it as the `cli.js` asset on
+# the rolling `cli-latest` GitHub Release. That asset is what `sh/cli/install.sh`
+# downloads for `curl -fsSL .../install.sh | bash`, so it must stay in sync with
+# the source. Requires the repo to be public (assets are fetched unauthenticated).
+#
+# Versioning: the patch number is the workflow run number, so every release gets
+# a strictly higher version (MAJOR.MINOR.<run_number>) without a commit-back loop.
+# MAJOR.MINOR is human-controlled in packages/cli/package.json — bump it there to
+# signal a feature or breaking release. The computed version is both embedded in
+# cli.js (so `agentsea version` is accurate) and published as the `version` asset,
+# which `agentsea update` / the auto-update check read to decide if a newer build
+# exists. Without this, the version string never moved and `update` always said
+# "Already up to date".
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/cli/**"
+      - "packages/sdk/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/release-cli.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-cli
+  cancel-in-progress: true
+
+jobs:
+  release-cli:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.9"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compute release version
+        id: version
+        run: |
+          BASE="$(node -p "require('./packages/cli/package.json').version")"
+          MAJOR_MINOR="$(echo "$BASE" | cut -d. -f1-2)"
+          VERSION="${MAJOR_MINOR}.${{ github.run_number }}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Releasing agentsea CLI v${VERSION}"
+
+      - name: Stamp version into package.json
+        run: |
+          npm version "${{ steps.version.outputs.version }}" \
+            --no-git-tag-version --allow-same-version \
+            --workspace=@agentsea/cli
+
+      - name: Build CLI bundle
+        run: npm run build:cli
+
+      - name: Write version asset
+        run: printf '%s\n' "${{ steps.version.outputs.version }}" > version
+
+      - name: Publish / refresh cli-latest assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view cli-latest >/dev/null 2>&1; then
+            gh release upload cli-latest packages/cli/cli.js version --clobber
+          else
+            gh release create cli-latest packages/cli/cli.js version \
+              --title "agentsea CLI (latest)" \
+              --notes "Rolling latest agentsea CLI bundle (built from main). Consumed by sh/cli/install.sh."
+          fi

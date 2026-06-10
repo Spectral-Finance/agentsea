@@ -15,7 +15,7 @@ import {
 } from "../security.js";
 import { getHistoryPath } from "../shared/paths.js";
 import { asyncTryCatchIf, isOperationalError, tryCatch } from "../shared/result.js";
-import { SSH_BASE_OPTS, SSH_INTERACTIVE_OPTS, spawnInteractive, startSshTunnel } from "../shared/ssh.js";
+import { SSH_BASE_OPTS, SSH_INTERACTIVE_OPTS, agentseaInteractive, startSshTunnel } from "../shared/ssh.js";
 import { ensureSshKeys, getSshKeyOpts } from "../shared/ssh-keys.js";
 import { AGENTSEA_CLI } from "../shared/cli-invocation.js";
 import {
@@ -25,7 +25,8 @@ import {
   startT3PairingBrowserWatcher,
   T3_REMOTE_PORT,
 } from "../shared/t3-config.js";
-import { logWarn, openBrowser, rewriteLocalhostHttpUrlForWindowsBrowserFromWsl, shellQuote } from "../shared/ui.js";
+import { buildHermesDashboardStartScript } from "../shared/hermes-dashboard.js";
+import { logError, logWarn, openBrowser, rewriteLocalhostHttpUrlForWindowsBrowserFromWsl, shellQuote } from "../shared/ui.js";
 import { getErrorMessage } from "./shared.js";
 
 /** Strip persisted tunnel template down to path?query (Daytona preview host is prepended). */
@@ -75,7 +76,7 @@ async function openAgentTunnelBrowser(
 }
 
 /**
- * Check the remote VM for security alerts written by the spawn-security-scan cron.
+ * Check the remote VM for security alerts written by the agentsea-security-scan cron.
  * If alerts exist, display them as warnings before launching the agent.
  * Silently skips if the alerts file doesn't exist (scan not installed) or SSH fails.
  */
@@ -88,7 +89,7 @@ async function checkSecurityAlerts(ip: string, user: string, keyOpts: string[]):
         ...keyOpts,
         `${user}@${ip}`,
         "--",
-        "cat /var/log/spawn-security-alerts.log 2>/dev/null || true",
+        "cat /var/log/agentsea-security-alerts.log 2>/dev/null || true",
       ],
       {
         stdout: "pipe",
@@ -126,13 +127,13 @@ async function runInteractiveCommand(
   manualCmd: string,
 ): Promise<void> {
   const r = tryCatch(() =>
-    spawnInteractive([
+    agentseaInteractive([
       cmd,
       ...args,
     ]),
   );
   if (!r.ok) {
-    p.log.error(`Failed to connect: ${getErrorMessage(r.error)}`);
+    logError(`Failed to connect: ${getErrorMessage(r.error)}`);
     p.log.info(`Try manually: ${pc.cyan(manualCmd)}`);
     throw r.error;
   }
@@ -185,8 +186,8 @@ export async function cmdConnect(connection: VMConnection, agentKey?: string): P
     }
   });
   if (!connectValidation.ok) {
-    p.log.error(`Security validation failed: ${getErrorMessage(connectValidation.error)}`);
-    p.log.info("Your spawn history file may be corrupted or tampered with.");
+    logError(`Security validation failed: ${getErrorMessage(connectValidation.error)}`);
+    p.log.info("Your agentsea history file may be corrupted or tampered with.");
     p.log.info(`Location: ${getHistoryPath()}`);
     p.log.info(`To fix: edit the file and remove the invalid entry, or run '${AGENTSEA_CLI} list --clear'`);
     process.exit(1);
@@ -265,8 +266,8 @@ export async function cmdEnterAgent(
     }
   });
   if (!enterValidation.ok) {
-    p.log.error(`Security validation failed: ${getErrorMessage(enterValidation.error)}`);
-    p.log.info("Your spawn history file may be corrupted or tampered with.");
+    logError(`Security validation failed: ${getErrorMessage(enterValidation.error)}`);
+    p.log.info("Your agentsea history file may be corrupted or tampered with.");
     p.log.info(`Location: ${getHistoryPath()}`);
     p.log.info(`To fix: edit the file and remove the invalid entry, or run '${AGENTSEA_CLI} list --clear'`);
     process.exit(1);
@@ -274,12 +275,12 @@ export async function cmdEnterAgent(
 
   const agentDef = manifest?.agents?.[agentKey];
 
-  // Prefer the launch command stored at spawn time (captures dynamic state),
+  // Prefer the launch command stored at agentsea time (captures dynamic state),
   // fall back to manifest definition, then to agent key as last resort
   const storedCmd = connection.launch_cmd;
   let remoteCmd: string;
   if (storedCmd) {
-    // Stored command already includes source ~/.spawnrc, PATH setup, etc.
+    // Stored command already includes source ~/.agentsearc, PATH setup, etc.
     remoteCmd = storedCmd;
   } else {
     const launchCmd = agentDef?.launch ?? agentKey;
@@ -290,9 +291,9 @@ export async function cmdEnterAgent(
     if (preLaunch) {
       validatePreLaunchCmd(preLaunch);
     }
-    validateLaunchCmd(`source ~/.spawnrc 2>/dev/null; ${launchCmd}`);
+    validateLaunchCmd(`source ~/.agentsearc 2>/dev/null; ${launchCmd}`);
     const parts = [
-      "source ~/.spawnrc 2>/dev/null",
+      "source ~/.agentsearc 2>/dev/null",
     ];
     if (preLaunch) {
       parts.push(preLaunch);
@@ -351,7 +352,7 @@ export async function cmdEnterAgent(
     return;
   }
 
-  // Re-establish SSH tunnel for web dashboard if tunnel metadata was persisted at spawn time
+  // Re-establish SSH tunnel for web dashboard if tunnel metadata was persisted at agentsea time
   let tunnelHandle: SshTunnelHandle | undefined;
   let t3PairingWatcher: { stop: () => void } | undefined;
   const tunnelPort = connection.metadata?.tunnel_remote_port;
@@ -365,8 +366,8 @@ export async function cmdEnterAgent(
       }
     });
     if (!tunnelValidation.ok) {
-      p.log.error(`Security validation failed: ${getErrorMessage(tunnelValidation.error)}`);
-      p.log.info("Your spawn history file may be corrupted or tampered with.");
+      logError(`Security validation failed: ${getErrorMessage(tunnelValidation.error)}`);
+      p.log.info("Your agentsea history file may be corrupted or tampered with.");
       p.log.info(`Location: ${getHistoryPath()}`);
       p.log.info(`To fix: edit the file and remove the invalid entry, or run '${AGENTSEA_CLI} list --clear'`);
       process.exit(1);
@@ -405,7 +406,7 @@ export async function cmdEnterAgent(
   p.log.step(`Entering ${pc.bold(agentName)} on ${pc.bold(connection.ip)}...`);
   const tunnelPortExport =
     tunnelHandle && agentKey === "t3code"
-      ? `export SPAWN_TUNNEL_LOCAL_PORT=${tunnelHandle.localPort}; `
+      ? `export AGENTSEA_TUNNEL_LOCAL_PORT=${tunnelHandle.localPort}; `
       : "";
   const quotedRemoteCmd = shellQuote(`${tunnelPortExport}${remoteCmd}`);
   await runInteractiveCommand(
@@ -433,12 +434,12 @@ export async function cmdOpenDashboard(connection: VMConnection, agentKey?: stri
     const { validateDaytonaConnection } = await import("../daytona/daytona.js");
     const validation = tryCatch(() => validateDaytonaConnection(connection));
     if (!validation.ok) {
-      p.log.error(`Security validation failed: ${getErrorMessage(validation.error)}`);
+      logError(`Security validation failed: ${getErrorMessage(validation.error)}`);
       return;
     }
     const opened = await openDaytonaDashboard(connection);
     if (!opened) {
-      p.log.error("No dashboard metadata found for this Daytona sandbox.");
+      logError("No dashboard metadata found for this Daytona sandbox.");
       return;
     }
     p.log.success("Opened Daytona preview URL in your browser.");
@@ -450,14 +451,14 @@ export async function cmdOpenDashboard(connection: VMConnection, agentKey?: stri
     validateUsername(connection.user);
   });
   if (!validation.ok) {
-    p.log.error(`Security validation failed: ${getErrorMessage(validation.error)}`);
+    logError(`Security validation failed: ${getErrorMessage(validation.error)}`);
     return;
   }
 
   const tunnelPort = connection.metadata?.tunnel_remote_port;
   const urlTemplate = connection.metadata?.tunnel_browser_url_template;
   if (!tunnelPort) {
-    p.log.error("No dashboard tunnel info found for this server.");
+    logError("No dashboard tunnel info found for this server.");
     return;
   }
 
@@ -469,15 +470,46 @@ export async function cmdOpenDashboard(connection: VMConnection, agentKey?: stri
     }
   });
   if (!tunnelValidation.ok) {
-    p.log.error(`Security validation failed: ${getErrorMessage(tunnelValidation.error)}`);
-    p.log.info("Your spawn history file may be corrupted or tampered with.");
+    logError(`Security validation failed: ${getErrorMessage(tunnelValidation.error)}`);
+    p.log.info("Your agentsea history file may be corrupted or tampered with.");
     p.log.info(`Location: ${getHistoryPath()}`);
     p.log.info(`To fix: edit the file and remove the invalid entry, or run '${AGENTSEA_CLI} list --clear'`);
     return;
   }
 
-  p.log.step("Opening SSH tunnel to dashboard...");
   const keys = await ensureSshKeys();
+  const resolvedAgent = agentKey ?? "";
+
+  if (resolvedAgent === "hermes") {
+    p.log.step("Ensuring Hermes dashboard is running on the VM...");
+    const hermesScript = buildHermesDashboardStartScript(120);
+    const hermesResult = await asyncTryCatchIf(isOperationalError, async () => {
+      const proc = Bun.spawn(
+        [
+          "ssh",
+          ...SSH_BASE_OPTS,
+          ...getSshKeyOpts(keys),
+          `${connection.user}@${connection.ip}`,
+          hermesScript,
+        ],
+        { stdio: ["ignore", "pipe", "pipe"] },
+      );
+      const exitCode = await proc.exited;
+      if (exitCode !== 0) {
+        throw new Error("Hermes dashboard did not become healthy on the VM");
+      }
+    });
+    if (!hermesResult.ok) {
+      logError(
+        `Hermes dashboard is not running on this server (${getErrorMessage(hermesResult.error)}).`,
+      );
+      p.log.info("SSH to the VM and check: tail -40 /tmp/hermes-dashboard.log");
+      p.log.info("The Hermes TUI still works via agentsea connect.");
+      return;
+    }
+  }
+
+  p.log.step("Opening SSH tunnel to dashboard...");
   const tunnelResult = await asyncTryCatchIf(isOperationalError, () =>
     startSshTunnel({
       host: connection.ip,
@@ -487,12 +519,11 @@ export async function cmdOpenDashboard(connection: VMConnection, agentKey?: stri
     }),
   );
   if (!tunnelResult.ok) {
-    p.log.error("Failed to open SSH tunnel to dashboard.");
+    logError("Failed to open SSH tunnel to dashboard.");
     return;
   }
 
   const handle = tunnelResult.data;
-  const resolvedAgent = agentKey ?? "";
   if (resolvedAgent === "t3code") {
     logT3PairingHandoff(handle.localPort);
     const watcher = startT3PairingBrowserWatcher({

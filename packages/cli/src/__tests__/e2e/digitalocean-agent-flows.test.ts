@@ -5,18 +5,18 @@
  *
  * Opt-in only (default `npm test` skips these):
  *
- *   GRIDSPAWN_RUN_DO_E2E=1 THEGRID_API_KEY=... DIGITALOCEAN_ACCESS_TOKEN=... \\
+ *   GRIDAGENTSEA_RUN_DO_E2E=1 THEGRID_API_KEY=... DIGITALOCEAN_ACCESS_TOKEN=... \\
  *     npm run test:cli:e2e:do
  *
  * Optional:
- *   GRIDSPAWN_E2E_AGENTS=codex,claude   # subset; default = all E2E slugs
- *   GRIDSPAWN_E2E_INPUT_TEST=1          # also run live LLM prompts (slower)
+ *   GRIDAGENTSEA_E2E_AGENTS=codex,claude   # subset; default = all E2E slugs
+ *   GRIDAGENTSEA_E2E_INPUT_TEST=1          # also run live LLM prompts (slower)
  *
  * Tests are serialized so Bun never provisions multiple droplets at once.
  */
 import { describe, expect, it } from "bun:test";
 import { join } from "node:path";
-import { canRunDigitalOceanE2e, e2eAgentListFromEnv } from "./e2e-agents.js";
+import { canRunDigitalOceanE2e, E2E_SPREADSHEET_ISSUE_BY_AGENT, e2eAgentListFromEnv } from "./e2e-agents.js";
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..");
 const E2E_SH = join(REPO_ROOT, "sh", "e2e", "e2e.sh");
@@ -35,10 +35,10 @@ function runSerial<T>(fn: () => Promise<T>): Promise<T> {
   return run;
 }
 
-const PER_AGENT_MS = Number(process.env.GRIDSPAWN_E2E_PER_AGENT_TIMEOUT_MS ?? 90 * 60 * 1000);
+const PER_AGENT_MS = Number(process.env.GRIDAGENTSEA_E2E_PER_AGENT_TIMEOUT_MS ?? 90 * 60 * 1000);
 
 async function runE2eForAgent(agent: string): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const inputTest = process.env.GRIDSPAWN_E2E_INPUT_TEST === "1";
+  const inputTest = process.env.GRIDAGENTSEA_E2E_INPUT_TEST === "1";
   const extraFlags = inputTest ? [] : ["--skip-input-test"];
   const proc = Bun.spawn({
     cmd: [
@@ -62,15 +62,16 @@ async function runE2eForAgent(agent: string): Promise<{ exitCode: number; stdout
 }
 
 describe("DigitalOcean E2E (real provision + verify via e2e.sh)", () => {
-  it.skipIf(canRun)("prints opt-in hint when GRIDSPAWN_RUN_DO_E2E is unset", () => {
+  it.skipIf(canRun)("prints opt-in hint when GRIDAGENTSEA_RUN_DO_E2E is unset", () => {
     expect(e2eGate.reason.length).toBeGreaterThan(0);
     console.log(`\n[DigitalOcean E2E skipped] ${e2eGate.reason}\n`);
   });
 
   const agents = e2eAgentListFromEnv();
   for (const agent of agents) {
+    const issueTag = E2E_SPREADSHEET_ISSUE_BY_AGENT[agent] ?? "";
     it.skipIf(!canRun)(
-      `${agent}: agentsea provision, install, verify on DigitalOcean`,
+      `${agent}${issueTag ? ` (${issueTag})` : ""}: agentsea provision, install, verify on DigitalOcean`,
       async () => {
         await runSerial(async () => {
           const r = await runE2eForAgent(agent);

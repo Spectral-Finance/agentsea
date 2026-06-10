@@ -1,6 +1,5 @@
 import type { Manifest } from "../manifest.js";
 
-import { randomBytes } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import { tmpdir } from "node:os";
@@ -8,8 +7,9 @@ import * as path from "node:path";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { buildDashboardHint, EXIT_CODE_GUIDANCE, SIGNAL_GUIDANCE } from "../guidance-data.js";
-import { generateSpawnId, getActiveServers, loadHistory, saveSpawnRecord } from "../history.js";
-import { loadManifest, RAW_BASE, REPO, SPAWN_CDN } from "../manifest.js";
+import { generateAgentseaId, getActiveServers, loadHistory, saveAgentseaRecord } from "../history.js";
+import { loadManifest, RAW_BASE, REPO } from "../manifest.js";
+import { getCdnOrigin } from "../shared/cdn.js";
 import {
   validateConnectionIP,
   validateIdentifier,
@@ -21,6 +21,7 @@ import {
 import { asyncTryCatch, isFileError, tryCatch, tryCatchIf } from "../shared/result.js";
 import { getLocalShell, isWindows } from "../shared/shell.js";
 import { AGENTSEA_CLI } from "../shared/cli-invocation.js";
+import { runLocalAgent } from "../local/run-local-agent.js";
 import { getCloudProvider } from "../shared/cloud-provider-registry.js";
 import { maybeShowStarPrompt } from "../shared/star-prompt.js";
 import { captureEvent, setTelemetryContext } from "../shared/telemetry.js";
@@ -30,9 +31,10 @@ import {
   logInfo,
   logStep,
   prepareStdinForHandoff,
+  defaultAgentseaLabel,
   toKebabCase,
 } from "../shared/ui.js";
-import { getDefaultSpawnEnabledStepsCsv, promptSetupOptions, promptSpawnName } from "./interactive.js";
+import { getDefaultAgentseaEnabledStepsCsv, promptSetupOptions, promptAgentseaName } from "./interactive.js";
 import { handleRecordAction } from "./list.js";
 import {
   buildRetryCommand,
@@ -79,7 +81,7 @@ function resolveAndLog(
   };
 }
 
-/** Detect and fix swapped arguments: "spawn <cloud> <agent>" -> "spawn <agent> <cloud>" */
+/** Detect and fix swapped arguments: "agentsea <cloud> <agent>" -> "agentsea <agent> <cloud>" */
 function detectAndFixSwappedArgs(
   manifest: Manifest,
   agent: string,
@@ -195,7 +197,7 @@ export function showDryRunPreview(manifest: Manifest, agent: string, cloud: stri
   printDryRunSection("Agent", buildAgentLines(manifest.agents[agent]));
   printDryRunSection("Cloud", buildCloudLines(manifest.clouds[cloud]));
   printDryRunSection("Script", [
-    `  URL: ${SPAWN_CDN}/${cloud}/${agent}.sh`,
+    `  URL: ${getCdnOrigin()}/${cloud}/${agent}.sh`,
   ]);
 
   const envLines = buildEnvironmentLines(manifest, agent);
@@ -223,43 +225,51 @@ export function showDryRunPreview(manifest: Manifest, agent: string, cloud: stri
 // ── Script download ──────────────────────────────────────────────────────────
 
 async function downloadScriptWithFallback(primaryUrl: string, fallbackUrl: string): Promise<string> {
-  logStep("Downloading spawn script...");
+  logStep("Downloading agentsea script...");
 
-  const r = await asyncTryCatch(async () => {
+  // Try the primary CDN. A connection-level failure (DNS/unreachable host) THROWS
+  // instead of returning a response, so we must fall back to GitHub raw on both a
+  // thrown error and a non-OK status — otherwise an unreachable CDN is fatal even
+  // when GitHub (which served the manifest) is reachable.
+  const primary = await asyncTryCatch(async () => {
     const res = await fetch(primaryUrl, {
       signal: AbortSignal.timeout(FETCH_TIMEOUT),
     });
-    if (res.ok) {
-      const text = await res.text();
-      logInfo("Script downloaded");
-      return text;
+    if (!res.ok) {
+      throw new Error(`primary returned HTTP ${res.status}`);
     }
+    return await res.text();
+  });
+  if (primary.ok) {
+    logInfo("Script downloaded");
+    return primary.data;
+  }
 
-    // Fallback to GitHub raw
-    logStep("Trying fallback source...");
+  // Fallback to GitHub raw.
+  logStep("Trying fallback source...");
+  const r = await asyncTryCatch(async () => {
     const ghRes = await fetch(fallbackUrl, {
       signal: AbortSignal.timeout(FETCH_TIMEOUT),
     });
     if (!ghRes.ok) {
       logError("Download failed");
-      reportDownloadFailure(res.status, ghRes.status);
+      reportDownloadFailure(ghRes.status, ghRes.status);
       process.exit(1);
     }
-    const text = await ghRes.text();
-    logInfo("Script downloaded (fallback)");
-    return text;
+    return await ghRes.text();
   });
   if (!r.ok) {
     logError("Download failed");
     throw r.error;
   }
+  logInfo("Script downloaded (fallback)");
   return r.data;
 }
 
 // Report 404 errors (script not found)
 function report404Failure(): void {
-  p.log.error("Script not found (HTTP 404)");
-  console.error("\nThe spawn script doesn't exist at the expected location.");
+  logError("Script not found (HTTP 404)");
+  console.error("\nThe agentsea script doesn't exist at the expected location.");
   console.error("\nThis usually means:");
   console.error("  \u2022 The agent + cloud combination hasn't been implemented yet");
   console.error("  \u2022 The script is currently being deployed (rare)");
@@ -273,9 +283,9 @@ function report404Failure(): void {
 // Report HTTP errors (non-404)
 function reportHTTPFailure(primaryStatus: number, fallbackStatus: number): void {
   const hasServerError = primaryStatus >= 500 || fallbackStatus >= 500;
-  p.log.error("Script download failed");
+  logError("Script download failed");
   console.error(
-    `\nCouldn't download the spawn script (HTTP ${primaryStatus} from primary, ${fallbackStatus} from fallback).`,
+    `\nCouldn't download the agentsea script (HTTP ${primaryStatus} from primary, ${fallbackStatus} from fallback).`,
   );
   if (hasServerError) {
     console.error("\nThe servers are experiencing issues or temporarily unavailable.");
@@ -352,7 +362,7 @@ const NETWORK_ERROR_GUIDANCE: Record<"timeout" | "connection" | "unknown", Error
 };
 
 function reportDownloadError(ghUrl: string, err: unknown): never {
-  p.log.error("Script download failed");
+  logError("Script download failed");
   const errMsg = getErrorMessage(err);
   console.error("\nNetwork error:", errMsg);
 
@@ -370,7 +380,7 @@ function reportDownloadError(ghUrl: string, err: unknown): never {
     console.error(step);
   }
   console.error(
-    `  5. Offline / local dev: run from the agentsea checkout (with ${pc.cyan("sh/")}), or set ${pc.cyan("SPAWN_CLI_DIR")} / ${pc.cyan("GRID_SPAWN_ROOT")} to that repo root`,
+    `  5. Offline / local dev: run from the agentsea checkout (with ${pc.cyan("sh/")}), or set ${pc.cyan("AGENTSEA_CLI_DIR")} / ${pc.cyan("AGENTSEA_ROOT")} to that repo root`,
   );
   process.exit(1);
 }
@@ -467,9 +477,9 @@ function reportScriptFailure(
   authHint?: string,
   prompt?: string,
   dashboardUrl?: string,
-  spawnName?: string,
+  agentseaName?: string,
 ): never {
-  p.log.error("Spawn script failed");
+  logError("Agentsea script failed");
   console.error("\nError:", errMsg);
 
   const exitCodeMatch = errMsg.match(/exited with code (\d+)/);
@@ -487,7 +497,7 @@ function reportScriptFailure(
     console.error(line);
   }
   console.error("");
-  console.error(`Retry: ${pc.cyan(buildRetryCommand(agent, cloud, prompt, spawnName))}`);
+  console.error(`Retry: ${pc.cyan(buildRetryCommand(agent, cloud, prompt, agentseaName))}`);
   process.exit(1);
 }
 
@@ -508,7 +518,7 @@ function handleUserInterrupt(errMsg: string, dashboardUrl?: string): void {
 
 // ── Script execution ─────────────────────────────────────────────────────────
 
-function spawnScript(script: string, env: Record<string, string | undefined>): void {
+function agentseaScript(script: string, env: Record<string, string | undefined>): void {
   const [shell, flag] = getLocalShell();
   const result = spawnSync(
     shell,
@@ -545,8 +555,8 @@ function runBash(
   script: string,
   prompt?: string,
   debug?: boolean,
-  spawnName?: string,
-  /** Monorepo root — sets SPAWN_CLI_DIR so sh wrappers run packages/cli/src/... instead of curling digitalocean.js */
+  agentseaName?: string,
+  /** Monorepo root — sets AGENTSEA_CLI_DIR so sh wrappers run packages/cli/src/... instead of curling digitalocean.js */
   bundledRepoRoot?: string,
 ): void {
   // SECURITY: Validate script content before execution
@@ -557,28 +567,31 @@ function runBash(
     ...process.env,
   };
   if (bundledRepoRoot) {
-    env.SPAWN_CLI_DIR = bundledRepoRoot;
+    env.AGENTSEA_CLI_DIR = bundledRepoRoot;
   }
   if (prompt) {
-    env.SPAWN_PROMPT = prompt;
-    env.SPAWN_MODE = "non-interactive";
+    env.AGENTSEA_PROMPT = prompt;
+    env.AGENTSEA_MODE = "non-interactive";
   }
   if (debug) {
-    env.SPAWN_DEBUG = "1";
+    env.AGENTSEA_DEBUG = "1";
   }
-  if (spawnName) {
-    env.SPAWN_NAME = spawnName;
-    env.SPAWN_NAME_KEBAB = toKebabCase(spawnName);
+  if (agentseaName) {
+    env.AGENTSEA_NAME = agentseaName;
+    env.AGENTSEA_NAME_KEBAB = toKebabCase(agentseaName);
   }
-  if (process.env.SPAWN_CUSTOM === "1") {
-    env.SPAWN_CUSTOM = "1";
+  if (process.env.AGENTSEA_AGENT_SLUG) {
+    env.AGENTSEA_AGENT_SLUG = process.env.AGENTSEA_AGENT_SLUG;
+  }
+  if (process.env.AGENTSEA_CUSTOM === "1") {
+    env.AGENTSEA_CUSTOM = "1";
   }
 
   // Clean up stdin state left by @clack/prompts so the child process
   // gets a pristine file descriptor (prevents silent hangs / early exit)
   prepareStdinForHandoff();
 
-  spawnScript(script, env);
+  agentseaScript(script, env);
 }
 
 /**
@@ -591,10 +604,10 @@ function runBashScript(
   prompt?: string,
   dashboardUrl?: string,
   debug?: boolean,
-  spawnName?: string,
+  agentseaName?: string,
   bundledRepoRoot?: string,
 ): string | undefined {
-  const r = tryCatch(() => runBash(script, prompt, debug, spawnName, bundledRepoRoot));
+  const r = tryCatch(() => runBash(script, prompt, debug, agentseaName, bundledRepoRoot));
   if (r.ok) {
     return undefined;
   }
@@ -622,7 +635,7 @@ function runBashScript(
  */
 async function downloadBundle(cloud: string): Promise<string> {
   const bundleUrl = `https://github.com/${REPO}/releases/download/${cloud}-latest/${cloud}.js`;
-  logStep("Downloading spawn bundle...");
+  logStep("Downloading agentsea bundle...");
 
   const r = await asyncTryCatch(async () => {
     const res = await fetch(bundleUrl, {
@@ -630,8 +643,7 @@ async function downloadBundle(cloud: string): Promise<string> {
       redirect: "follow",
     });
     if (!res.ok) {
-      logError("Download failed");
-      p.log.error(`Bundle not found at ${bundleUrl} (HTTP ${res.status})`);
+      logError(`Bundle not found at ${bundleUrl} (HTTP ${res.status})`);
       process.exit(2);
     }
     const text = await res.text();
@@ -651,7 +663,7 @@ function runBundleSync(
   agent: string,
   env: Record<string, string | undefined>,
 ): void {
-  const tmpFile = path.join(fs.mkdtempSync(path.join(tmpdir(), "spawn-")), `${cloud}.js`);
+  const tmpFile = path.join(fs.mkdtempSync(path.join(tmpdir(), "agentsea-")), `${cloud}.js`);
   fs.writeFileSync(tmpFile, bundleContent);
 
   const result = spawnSync(
@@ -722,21 +734,21 @@ export async function execScript(
   authHint?: string,
   dashboardUrl?: string,
   debug?: boolean,
-  spawnName?: string,
+  agentseaName?: string,
 ): Promise<boolean> {
-  // Generate a unique spawn ID and record the spawn before execution
-  const spawnId = generateSpawnId();
-  const parentId = process.env.SPAWN_PARENT_ID || undefined;
-  const depth = process.env.SPAWN_DEPTH ? Number(process.env.SPAWN_DEPTH) : undefined;
+  // Generate a unique agentsea ID and record the agentsea before execution
+  const agentseaId = generateAgentseaId();
+  const parentId = process.env.AGENTSEA_PARENT_ID || undefined;
+  const depth = process.env.AGENTSEA_DEPTH ? Number(process.env.AGENTSEA_DEPTH) : undefined;
   const saveResult = tryCatchIf(isFileError, () =>
-    saveSpawnRecord({
-      id: spawnId,
+    saveAgentseaRecord({
+      id: agentseaId,
       agent,
       cloud,
       timestamp: new Date().toISOString(),
-      ...(spawnName
+      ...(agentseaName
         ? {
-            name: spawnName,
+            name: agentseaName,
           }
         : {}),
       ...(prompt
@@ -757,28 +769,44 @@ export async function execScript(
     }),
   );
   if (!saveResult.ok && debug) {
-    console.error(pc.dim(`Warning: Failed to save spawn record: ${getErrorMessage(saveResult.error)}`));
+    console.error(pc.dim(`Warning: Failed to save agentsea record: ${getErrorMessage(saveResult.error)}`));
   }
-  process.env.SPAWN_ID = spawnId;
+  process.env.AGENTSEA_ID = agentseaId;
+
+  // Local cloud: run in-process from the installed CLI bundle (no CDN/GitHub script fetch).
+  if (cloud === "local") {
+    if (debug) {
+      console.error(`[run] Executing ${agent} on local (in-process)...`);
+    }
+    prepareStdinForHandoff();
+    const localResult = await asyncTryCatch(() => runLocalAgent(agent));
+    if (!localResult.ok) {
+      const errMsg = getErrorMessage(localResult.error);
+      handleUserInterrupt(errMsg, dashboardUrl);
+      reportScriptFailure(errMsg, cloud, agent, authHint, prompt, dashboardUrl, agentseaName);
+      return false;
+    }
+    return true;
+  }
 
   if (isWindows()) {
     const env: Record<string, string | undefined> = {
       ...process.env,
     };
     if (prompt) {
-      env.SPAWN_PROMPT = prompt;
-      env.SPAWN_MODE = "non-interactive";
+      env.AGENTSEA_PROMPT = prompt;
+      env.AGENTSEA_MODE = "non-interactive";
     }
     if (debug) {
-      env.SPAWN_DEBUG = "1";
+      env.AGENTSEA_DEBUG = "1";
     }
-    if (spawnName) {
-      env.SPAWN_NAME = spawnName;
-      env.SPAWN_NAME_KEBAB = toKebabCase(spawnName);
+    if (agentseaName) {
+      env.AGENTSEA_NAME = agentseaName;
+      env.AGENTSEA_NAME_KEBAB = toKebabCase(agentseaName);
     }
     prepareStdinForHandoff();
 
-    const cliDir = process.env.SPAWN_CLI_DIR;
+    const cliDir = process.env.AGENTSEA_CLI_DIR;
     const localMainResolved = cliDir ? resolveLocalProviderMain(cliDir, cloud) : "";
     const r = localMainResolved
       ? tryCatch(() => runBundlePathSync(localMainResolved, agent, env))
@@ -797,7 +825,7 @@ export async function execScript(
     if (!r.ok) {
       const errMsg = getErrorMessage(r.error);
       handleUserInterrupt(errMsg, dashboardUrl);
-      reportScriptFailure(errMsg, cloud, agent, authHint, prompt, dashboardUrl, spawnName);
+      reportScriptFailure(errMsg, cloud, agent, authHint, prompt, dashboardUrl, agentseaName);
       return false;
     }
     if (localMainResolved) {
@@ -810,7 +838,7 @@ export async function execScript(
   }
 
   let scriptContent = "";
-  // macOS/Linux: checked-in wrapper when running from a local checkout (or explicit SPAWN_CLI_DIR / GRID_SPAWN_ROOT).
+  // macOS/Linux: checked-in wrapper when running from a local checkout (or explicit AGENTSEA_CLI_DIR / AGENTSEA_ROOT).
   const repoRoot = resolveBundledShRepoRoot(cloud, agent);
   const localScriptResolved = repoRoot ? resolveLocalWrapperScript(repoRoot, cloud, agent) : "";
 
@@ -820,7 +848,7 @@ export async function execScript(
       console.error(`[run] Using local script: ${localScriptResolved}`);
     }
   } else {
-    const url = `https://spawn.thegrid.ai/${cloud}/${agent}.sh`;
+    const url = `${getCdnOrigin()}/${cloud}/${agent}.sh`;
     const ghUrl = `${RAW_BASE}/sh/${cloud}/${agent}.sh`;
 
     const dlResult = await asyncTryCatch(() => downloadScriptWithFallback(url, ghUrl));
@@ -837,11 +865,11 @@ export async function execScript(
     prompt,
     dashboardUrl,
     debug,
-    spawnName,
+    agentseaName,
     localScriptResolved ? repoRoot : undefined,
   );
   if (lastErr) {
-    reportScriptFailure(lastErr, cloud, agent, authHint, prompt, dashboardUrl, spawnName);
+    reportScriptFailure(lastErr, cloud, agent, authHint, prompt, dashboardUrl, agentseaName);
     return false;
   }
   return true;
@@ -859,10 +887,10 @@ export interface HeadlessOptions {
   prompt?: string;
   debug?: boolean;
   outputFormat?: string;
-  spawnName?: string;
+  agentseaName?: string;
 }
 
-interface SpawnResult {
+interface AgentseaResult {
   status: "success" | "error";
   cloud: string;
   agent: string;
@@ -875,7 +903,7 @@ interface SpawnResult {
   cli_updated?: boolean;
 }
 
-function headlessOutput(result: SpawnResult, outputFormat?: string): void {
+function headlessOutput(result: AgentseaResult, outputFormat?: string): void {
   if (outputFormat === "json") {
     console.log(JSON.stringify(result));
   } else {
@@ -925,7 +953,7 @@ function hasUnsafePathSegment(s: string): boolean {
 
 /**
  * Resolve repo root that ships `sh/<cloud>/<agent>.sh` (and `manifest.json`).
- * Tries `SPAWN_CLI_DIR`, `GRID_SPAWN_ROOT`, then walks up from `cwd` (same spirit as load-env).
+ * Tries `AGENTSEA_CLI_DIR`, `AGENTSEA_ROOT`, then walks up from `cwd` (same spirit as load-env).
  */
 function resolveBundledShRepoRoot(cloud: string, agent: string): string {
   if (hasUnsafePathSegment(cloud) || hasUnsafePathSegment(agent)) {
@@ -946,7 +974,7 @@ function resolveBundledShRepoRoot(cloud: string, agent: string): string {
     return "";
   };
 
-  for (const envBase of [process.env.SPAWN_CLI_DIR, process.env.GRID_SPAWN_ROOT]) {
+  for (const envBase of [process.env.AGENTSEA_CLI_DIR, process.env.AGENTSEA_ROOT]) {
     const hit = envBase ? tryDir(envBase) : "";
     if (hit) {
       return hit;
@@ -970,7 +998,7 @@ function resolveBundledShRepoRoot(cloud: string, agent: string): string {
 }
 
 /**
- * Resolve a trusted local Spawn checkout path for SPAWN_CLI_DIR.
+ * Resolve a trusted local Agentsea checkout path for AGENTSEA_CLI_DIR.
  *
  * On macOS, `/tmp` commonly resolves to `/private/tmp`, so compare against
  * the checkout's real path instead of the raw env var spelling.
@@ -982,7 +1010,7 @@ function resolveTrustedCliDir(cliDir: string): string {
 }
 
 /**
- * Resolve a provider local entrypoint from SPAWN_CLI_DIR safely.
+ * Resolve a provider local entrypoint from AGENTSEA_CLI_DIR safely.
  *
  * This keeps command routing aligned with the CloudProvider registry rather than
  * assuming `<cloud>/main.ts` path conventions inline.
@@ -1006,7 +1034,7 @@ function resolveLocalProviderMain(cliDir: string, cloud: string): string {
 }
 
 /**
- * Resolve a checked-in shell wrapper from a trusted local Spawn checkout.
+ * Resolve a checked-in shell wrapper from a trusted local Agentsea checkout.
  *
  * This lets unreleased provider work run from the current branch instead of
  * depending on the CDN / raw GitHub copy being published already.
@@ -1037,7 +1065,7 @@ function runScriptHeadless(
   script: string,
   prompt?: string,
   debug?: boolean,
-  spawnName?: string,
+  agentseaName?: string,
   bundledRepoRoot?: string,
 ): Promise<number> {
   validateScriptContent(script);
@@ -1046,20 +1074,20 @@ function runScriptHeadless(
     ...process.env,
   };
   if (bundledRepoRoot) {
-    env.SPAWN_CLI_DIR = bundledRepoRoot;
+    env.AGENTSEA_CLI_DIR = bundledRepoRoot;
   }
-  env.SPAWN_HEADLESS = "1";
-  env.SPAWN_MODE = "non-interactive";
-  env.SPAWN_NON_INTERACTIVE = "1";
+  env.AGENTSEA_HEADLESS = "1";
+  env.AGENTSEA_MODE = "non-interactive";
+  env.AGENTSEA_NON_INTERACTIVE = "1";
   if (prompt) {
-    env.SPAWN_PROMPT = prompt;
+    env.AGENTSEA_PROMPT = prompt;
   }
   if (debug) {
-    env.SPAWN_DEBUG = "1";
+    env.AGENTSEA_DEBUG = "1";
   }
-  if (spawnName) {
-    env.SPAWN_NAME = spawnName;
-    env.SPAWN_NAME_KEBAB = toKebabCase(spawnName);
+  if (agentseaName) {
+    env.AGENTSEA_NAME = agentseaName;
+    env.AGENTSEA_NAME_KEBAB = toKebabCase(agentseaName);
   }
 
   const [shell, flag] = getLocalShell();
@@ -1096,23 +1124,23 @@ function runBundleHeadless(
   agent: string,
   prompt?: string,
   debug?: boolean,
-  spawnName?: string,
+  agentseaName?: string,
 ): Promise<number> {
   const env: Record<string, string | undefined> = {
     ...process.env,
   };
-  env.SPAWN_HEADLESS = "1";
-  env.SPAWN_MODE = "non-interactive";
-  env.SPAWN_NON_INTERACTIVE = "1";
+  env.AGENTSEA_HEADLESS = "1";
+  env.AGENTSEA_MODE = "non-interactive";
+  env.AGENTSEA_NON_INTERACTIVE = "1";
   if (prompt) {
-    env.SPAWN_PROMPT = prompt;
+    env.AGENTSEA_PROMPT = prompt;
   }
   if (debug) {
-    env.SPAWN_DEBUG = "1";
+    env.AGENTSEA_DEBUG = "1";
   }
-  if (spawnName) {
-    env.SPAWN_NAME = spawnName;
-    env.SPAWN_NAME_KEBAB = toKebabCase(spawnName);
+  if (agentseaName) {
+    env.AGENTSEA_NAME = agentseaName;
+    env.AGENTSEA_NAME_KEBAB = toKebabCase(agentseaName);
   }
 
   return new Promise<number>((resolve, reject) => {
@@ -1143,12 +1171,12 @@ function runBundleHeadless(
 }
 
 export async function cmdRunHeadless(agent: string, cloud: string, opts: HeadlessOptions = {}): Promise<void> {
-  const { prompt, debug, outputFormat, spawnName } = opts;
+  const { prompt, debug, outputFormat, agentseaName } = opts;
 
   // Funnel entry for headless runs. No picker to instrument — headless either
   // validates and proceeds straight to runOrchestration, or it errors out.
   // The orchestrate.ts funnel_* events cover the rest.
-  captureEvent("spawn_launched", {
+  captureEvent("agentsea_launched", {
     mode: "headless",
   });
 
@@ -1225,9 +1253,35 @@ export async function cmdRunHeadless(agent: string, cloud: string, opts: Headles
   // Phase 2+3: Load and execute
   let exitCode: number;
 
+  if (resolvedCloud === "local") {
+    if (debug) {
+      console.error(`[headless] Executing ${resolvedAgent} on local (in-process)...`);
+    }
+    const localResult = await asyncTryCatch(() => runLocalAgent(resolvedAgent));
+    if (!localResult.ok) {
+      headlessError(
+        resolvedAgent,
+        resolvedCloud,
+        "EXECUTION_ERROR",
+        getErrorMessage(localResult.error),
+        outputFormat,
+        1,
+      );
+    }
+    headlessOutput(
+      {
+        status: "success",
+        cloud: resolvedCloud,
+        agent: resolvedAgent,
+      },
+      outputFormat,
+    );
+    process.exit(0);
+  }
+
   if (isWindows()) {
     // Windows: download JS bundle and run with bun (bash wrappers won't work)
-    const cliDir = process.env.SPAWN_CLI_DIR;
+    const cliDir = process.env.AGENTSEA_CLI_DIR;
     const localMainResolved = cliDir ? resolveLocalProviderMain(cliDir, resolvedCloud) : "";
 
     if (debug) {
@@ -1235,7 +1289,7 @@ export async function cmdRunHeadless(agent: string, cloud: string, opts: Headles
     }
 
     if (localMainResolved) {
-      exitCode = await runBundleHeadless(localMainResolved, resolvedAgent, prompt, debug, spawnName);
+      exitCode = await runBundleHeadless(localMainResolved, resolvedAgent, prompt, debug, agentseaName);
     } else {
       const bundleUrl = `https://github.com/${REPO}/releases/download/${resolvedCloud}-latest/${resolvedCloud}.js`;
       const fetchResult = await asyncTryCatch(async () => {
@@ -1266,9 +1320,9 @@ export async function cmdRunHeadless(agent: string, cloud: string, opts: Headles
         );
       }
       // Write bundle to temp file and run with bun
-      const tmpFile = path.join(fs.mkdtempSync(path.join(tmpdir(), "spawn-")), `${resolvedCloud}.js`);
+      const tmpFile = path.join(fs.mkdtempSync(path.join(tmpdir(), "agentsea-")), `${resolvedCloud}.js`);
       fs.writeFileSync(tmpFile, fetchResult.data);
-      exitCode = await runBundleHeadless(tmpFile, resolvedAgent, prompt, debug, spawnName);
+      exitCode = await runBundleHeadless(tmpFile, resolvedAgent, prompt, debug, agentseaName);
       tryCatchIf(isFileError, () => fs.unlinkSync(tmpFile));
     }
   } else {
@@ -1283,31 +1337,38 @@ export async function cmdRunHeadless(agent: string, cloud: string, opts: Headles
         console.error(`[headless] Using local script: ${localScriptResolved}`);
       }
     } else {
-      const url = `https://spawn.thegrid.ai/${resolvedCloud}/${resolvedAgent}.sh`;
+      const url = `${getCdnOrigin()}/${resolvedCloud}/${resolvedAgent}.sh`;
       const ghUrl = `${RAW_BASE}/sh/${resolvedCloud}/${resolvedAgent}.sh`;
 
-      const fetchResult = await asyncTryCatch(async () => {
+      // Primary CDN fetch throws on a connection-level failure (DNS/unreachable),
+      // so fall back to GitHub raw on both a thrown error and a non-OK status.
+      const primaryResult = await asyncTryCatch(async () => {
         const res = await fetch(url, {
           signal: AbortSignal.timeout(FETCH_TIMEOUT),
         });
-        if (res.ok) {
-          return res.text();
+        if (!res.ok) {
+          throw new Error(`primary returned HTTP ${res.status}`);
         }
-        const ghRes = await fetch(ghUrl, {
-          signal: AbortSignal.timeout(FETCH_TIMEOUT),
-        });
-        if (!ghRes.ok) {
-          headlessError(
-            resolvedAgent,
-            resolvedCloud,
-            "DOWNLOAD_ERROR",
-            `Script not found (HTTP ${res.status} primary, ${ghRes.status} fallback)`,
-            outputFormat,
-            2,
-          );
-        }
-        return ghRes.text();
+        return res.text();
       });
+      const fetchResult = primaryResult.ok
+        ? primaryResult
+        : await asyncTryCatch(async () => {
+            const ghRes = await fetch(ghUrl, {
+              signal: AbortSignal.timeout(FETCH_TIMEOUT),
+            });
+            if (!ghRes.ok) {
+              headlessError(
+                resolvedAgent,
+                resolvedCloud,
+                "DOWNLOAD_ERROR",
+                `Script not found (HTTP ${ghRes.status} fallback)`,
+                outputFormat,
+                2,
+              );
+            }
+            return ghRes.text();
+          });
       if (!fetchResult.ok) {
         headlessError(
           resolvedAgent,
@@ -1329,7 +1390,7 @@ export async function cmdRunHeadless(agent: string, cloud: string, opts: Headles
       scriptContent,
       prompt,
       debug,
-      spawnName,
+      agentseaName,
       localScriptResolved ? repoRoot : undefined,
     );
   }
@@ -1345,7 +1406,7 @@ export async function cmdRunHeadless(agent: string, cloud: string, opts: Headles
     );
   }
 
-  // Read the spawn record saved during orchestration to populate connection fields.
+  // Read the agentsea record saved during orchestration to populate connection fields.
   // Validate each field individually — silently omit any that fail validation to avoid
   // surfacing attacker-controlled data from a tampered history file in headless output.
   const history = loadHistory();
@@ -1353,7 +1414,7 @@ export async function cmdRunHeadless(agent: string, cloud: string, opts: Headles
     .filter((r) => r.agent === resolvedAgent && r.cloud === resolvedCloud && r.connection && !r.connection.deleted)
     .pop();
 
-  const connectionFields: Partial<Pick<SpawnResult, "ip_address" | "ssh_user" | "server_id" | "server_name">> = {};
+  const connectionFields: Partial<Pick<AgentseaResult, "ip_address" | "ssh_user" | "server_id" | "server_name">> = {};
   if (record?.connection) {
     const conn = record.connection;
     if (conn.ip && tryCatch(() => validateConnectionIP(conn.ip)).ok) {
@@ -1372,12 +1433,12 @@ export async function cmdRunHeadless(agent: string, cloud: string, opts: Headles
     }
   }
 
-  const result: SpawnResult = {
+  const result: AgentseaResult = {
     status: "success",
     cloud: resolvedCloud,
     agent: resolvedAgent,
     ...connectionFields,
-    ...(process.env.SPAWN_CLI_UPDATED === "1"
+    ...(process.env.AGENTSEA_CLI_UPDATED === "1"
       ? {
           cli_updated: true,
         }
@@ -1396,10 +1457,10 @@ export async function cmdRun(
   dryRun?: boolean,
   debug?: boolean,
 ): Promise<void> {
-  // Funnel entry for the non-interactive `spawn <agent> <cloud>` path.
+  // Funnel entry for the non-interactive `agentsea <agent> <cloud>` path.
   // mode distinguishes this from the interactive pickers so we can split the
   // funnel by entry point in PostHog.
-  captureEvent("spawn_launched", {
+  captureEvent("agentsea_launched", {
     mode: "direct",
   });
 
@@ -1434,14 +1495,14 @@ export async function cmdRun(
   captureEvent("preflight_passed");
 
   // Skip setup prompt if steps already set via --steps or --config
-  if (!process.env.SPAWN_ENABLED_STEPS) {
+  if (!process.env.AGENTSEA_ENABLED_STEPS) {
     const wantSetupPrompt =
-      process.env.SPAWN_SETUP_PROMPT === "1" || process.env.SPAWN_CUSTOM_SETUP === "1";
+      process.env.AGENTSEA_SETUP_PROMPT === "1" || process.env.AGENTSEA_CUSTOM_SETUP === "1";
     if (wantSetupPrompt && isInteractiveTTY()) {
       captureEvent("setup_options_shown");
       const enabledSteps = await promptSetupOptions(agent);
       if (enabledSteps) {
-        process.env.SPAWN_ENABLED_STEPS = [
+        process.env.AGENTSEA_ENABLED_STEPS = [
           ...enabledSteps,
         ].join(",");
         captureEvent("setup_options_selected", {
@@ -1449,9 +1510,9 @@ export async function cmdRun(
         });
       }
     } else {
-      const defaultsCsv = getDefaultSpawnEnabledStepsCsv(agent);
+      const defaultsCsv = getDefaultAgentseaEnabledStepsCsv(agent);
       if (defaultsCsv !== undefined) {
-        process.env.SPAWN_ENABLED_STEPS = defaultsCsv;
+        process.env.AGENTSEA_ENABLED_STEPS = defaultsCsv;
       }
       captureEvent("setup_options_auto_defaults", {
         step_count: defaultsCsv ? defaultsCsv.split(",").filter(Boolean).length : 0,
@@ -1459,30 +1520,32 @@ export async function cmdRun(
     }
   }
 
-  // OpenRouter-style direct run: pick a unique name so we don't block on clack prompts.
+  process.env.AGENTSEA_AGENT_SLUG = agent;
+
+  // Direct run: default name to the agent slug (e.g. hermes) so we don't block on clack prompts.
   if (
-    !process.env.SPAWN_NAME &&
-    process.env.SPAWN_PROMPT_FOR_NAME !== "1" &&
-    process.env.SPAWN_SETUP_PROMPT !== "1" &&
-    process.env.SPAWN_CUSTOM_SETUP !== "1"
+    !process.env.AGENTSEA_NAME &&
+    process.env.AGENTSEA_PROMPT_FOR_NAME !== "1" &&
+    process.env.AGENTSEA_SETUP_PROMPT !== "1" &&
+    process.env.AGENTSEA_CUSTOM_SETUP !== "1"
   ) {
-    process.env.SPAWN_NAME = `spawn-${randomBytes(4).toString("hex")}`;
+    process.env.AGENTSEA_NAME = defaultAgentseaLabel(agent);
   }
 
   captureEvent("name_prompt_shown");
-  const spawnName = await promptSpawnName();
+  const agentseaName = await promptAgentseaName(agent);
   captureEvent("name_entered");
 
   // If a name was given, check whether an active instance with that name already
   // exists for this agent + cloud combination.  When it does, route the user into
-  // the same action picker they get from `spawn ls` instead of blindly creating a
+  // the same action picker they get from `agentsea ls` instead of blindly creating a
   // second VM.
-  if (spawnName) {
+  if (agentseaName) {
     const activeServers = getActiveServers();
-    const existingRecord = activeServers.find((r) => r.name === spawnName && r.agent === agent && r.cloud === cloud);
+    const existingRecord = activeServers.find((r) => r.name === agentseaName && r.agent === agent && r.cloud === cloud);
     if (existingRecord) {
       p.log.warn(
-        `An active instance named ${pc.bold(spawnName)} already exists on ${pc.bold(manifest.clouds[cloud].name)}.`,
+        `An active instance named ${pc.bold(agentseaName)} already exists on ${pc.bold(manifest.clouds[cloud].name)}.`,
       );
       await handleRecordAction(existingRecord, manifest);
       return;
@@ -1502,7 +1565,7 @@ export async function cmdRun(
     getAuthHint(manifest, cloud),
     manifest.clouds[cloud].url,
     debug,
-    spawnName,
+    agentseaName,
   );
   if (success) {
     maybeShowStarPrompt();

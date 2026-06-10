@@ -1,12 +1,21 @@
 // shared/ssh.ts — Shared SSH wait utility with TCP pre-check and stderr capture
 
-import { spawnSync as nodeSpawnSync } from "node:child_process";
+import { spawnSync as nodeAgentseaSync } from "node:child_process";
 import { connect } from "node:net";
 import { normalize } from "node:path/posix";
 import { asyncTryCatch, tryCatch } from "./result.js";
 import { isWslLinux } from "./shell.js";
-import { logAlwaysStep, logError, logInfo, logStep, logStepDone, logStepInline, logWarn } from "./ui.js";
-import { isSpawnVerbose } from "./verbosity.js";
+import {
+  logAlwaysStep,
+  logError,
+  logInfo,
+  logStep,
+  logStepDone,
+  logStepInline,
+  logWarn,
+  runWithSpinner,
+} from "./ui.js";
+import { isAgentseaVerbose } from "./verbosity.js";
 
 // ─── Shared SSH Options ──────────────────────────────────────────────────────
 
@@ -39,16 +48,16 @@ export const SSH_BASE_OPTS: string[] = [
   "IdentitiesOnly=yes",
 ];
 
-/** Extra argv after `scp` — hide progress meter when not `--verbose` / `SPAWN_VERBOSE`. */
+/** Extra argv after `scp` — hide progress meter when not `--verbose` / `AGENTSEA_VERBOSE`. */
 export function scpQuietArgs(): string[] {
-  return isSpawnVerbose() ? [] : ["-q"];
+  return isAgentseaVerbose() ? [] : ["-q"];
 }
 
 export type RemoteExecStdio = ["ignore", "inherit", "inherit"] | ["ignore", "pipe", "pipe"];
 
 /** SSH/scp stdio: inherit when verbose, pipe (silent) otherwise. */
 export function remoteExecStdio(): RemoteExecStdio {
-  return isSpawnVerbose() ? ["ignore", "inherit", "inherit"] : ["ignore", "pipe", "pipe"];
+  return isAgentseaVerbose() ? ["ignore", "inherit", "inherit"] : ["ignore", "pipe", "pipe"];
 }
 
 type RemoteProcess = {
@@ -59,7 +68,7 @@ type RemoteProcess = {
 
 /** Await a remote SSH/scp child; drain pipes when not verbose. */
 export async function awaitRemoteProcess(proc: RemoteProcess): Promise<number> {
-  if (isSpawnVerbose()) {
+  if (isAgentseaVerbose()) {
     return (await proc.exited) ?? 1;
   }
   const [stdout, stderr] = await Promise.all([
@@ -77,7 +86,7 @@ export async function awaitRemoteProcess(proc: RemoteProcess): Promise<number> {
 }
 
 function logDebugRemoteFailure(text: string): void {
-  if (process.env.SPAWN_DEBUG === "1") {
+  if (process.env.AGENTSEA_DEBUG === "1") {
     process.stderr.write(`\x1b[2m[debug] remote:\n${text}\x1b[0m\n`);
     return;
   }
@@ -99,59 +108,79 @@ export async function pollCloudInitComplete(opts: {
 }): Promise<void> {
   const { host, user = "root", extraSshOpts, maxAttempts = 60 } = opts;
 
-  if (isSpawnVerbose()) {
-    logStep("Waiting for cloud-init to complete...");
-  } else {
-    logAlwaysStep("Finishing server bootstrap…");
-  }
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const pollResult = await asyncTryCatch(async () => {
-      const proc = Bun.spawn(
-        [
-          "ssh",
-          ...SSH_BASE_OPTS,
-          ...extraSshOpts,
-          `${user}@${host}`,
-          "test -f /root/.cloud-init-complete && echo done",
-        ],
-        {
-          stdio: remoteExecStdio(),
-        },
-      );
-      const timer = setTimeout(() => killWithTimeout(proc), 30_000);
-      const pipeResult = await asyncTryCatch(async () => {
-        if (isSpawnVerbose()) {
-          const exitCode = (await proc.exited) ?? 1;
-          return { stdout: exitCode === 0 ? "done" : "", exitCode };
-        }
-        const [stdout] = await Promise.all([
-          new Response(proc.stdout!).text(),
-          new Response(proc.stderr!).text(),
-        ]);
+  const pollOnce = async () => {
+    const proc = Bun.spawn(
+      [
+        "ssh",
+        ...SSH_BASE_OPTS,
+        ...extraSshOpts,
+        `${user}@${host}`,
+        "test -f /root/.cloud-init-complete && echo done",
+      ],
+      {
+        stdio: remoteExecStdio(),
+      },
+    );
+    const timer = setTimeout(() => killWithTimeout(proc), 30_000);
+    const pipeResult = await asyncTryCatch(async () => {
+      if (isAgentseaVerbose()) {
         const exitCode = (await proc.exited) ?? 1;
-        return { stdout, exitCode };
-      });
-      clearTimeout(timer);
-      if (!pipeResult.ok) {
-        throw pipeResult.error;
+        return { stdout: exitCode === 0 ? "done" : "", exitCode };
       }
-      return pipeResult.data;
+      const [stdout] = await Promise.all([
+        new Response(proc.stdout!).text(),
+        new Response(proc.stderr!).text(),
+      ]);
+      const exitCode = (await proc.exited) ?? 1;
+      return { stdout, exitCode };
     });
+    clearTimeout(timer);
+    if (!pipeResult.ok) {
+      throw pipeResult.error;
+    }
+    return pipeResult.data;
+  };
 
-    if (pollResult.ok && pollResult.data.exitCode === 0 && pollResult.data.stdout.includes("done")) {
-      logStepDone();
-      logInfo("Cloud-init complete");
-      return;
+  const runPollLoop = async (handle?: { setDetail: (detail: string) => void }) => {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      handle?.setDetail(`server setup check ${attempt}/${maxAttempts}`);
+      const pollResult = await asyncTryCatch(pollOnce);
+
+      if (pollResult.ok && pollResult.data.exitCode === 0 && pollResult.data.stdout.includes("done")) {
+        logStepDone();
+        logInfo("Cloud-init complete");
+        return;
+      }
+      if (attempt >= maxAttempts) {
+        logStepDone();
+        logWarn("Cloud-init marker not found, continuing anyway...");
+        return;
+      }
+      if (isAgentseaVerbose()) {
+        logStepInline(`Cloud-init in progress (${attempt}/${maxAttempts})`);
+      }
+      await sleep(5000);
     }
-    if (attempt >= maxAttempts) {
-      logStepDone();
-      logWarn("Cloud-init marker not found, continuing anyway...");
-      return;
-    }
-    logStepInline(`Cloud-init in progress (${attempt}/${maxAttempts})`);
-    await sleep(5000);
+  };
+
+  if (isAgentseaVerbose()) {
+    logStep("Waiting for cloud-init to complete...");
+    await runPollLoop();
+    return;
   }
+
+  await runWithSpinner("Finishing server bootstrap…", (handle) => runPollLoop(handle), {
+    doneMessage: "Server bootstrap complete",
+    formatMessage: ({ base, detail, elapsedSec }) => {
+      const phase =
+        elapsedSec < 30
+          ? "installing base packages"
+          : elapsedSec < 90
+            ? "configuring the VM"
+            : "almost ready";
+      return detail ? `${base} — ${detail} · ${phase}` : `${base} — ${phase}`;
+    },
+  });
 }
 
 /**
@@ -238,10 +267,10 @@ export function validateRemotePath(remotePath: string, allowedCharsPattern: RegE
   return normalized;
 }
 
-// ─── Interactive Spawn ───────────────────────────────────────────────────────
+// ─── Interactive Agentsea ───────────────────────────────────────────────────────
 
 /**
- * Spawn a child process for an interactive terminal session using spawnSync.
+ * Agentsea a child process for an interactive terminal session using spawnSync.
  *
  * Why spawnSync instead of Bun.spawn?
  * Bun's async event loop keeps polling fd 0 (stdin) even after
@@ -253,11 +282,11 @@ export function validateRemotePath(remotePath: string, allowedCharsPattern: RegE
  * sole reader of stdin. This matches the behavior of running SSH directly
  * from a shell.
  */
-export function spawnInteractive(args: string[], env?: Record<string, string | undefined>): number {
+export function agentseaInteractive(args: string[], env?: Record<string, string | undefined>): number {
   // Use Node's spawnSync (not Bun.spawnSync) — it's more battle-tested
   // with interactive TTY programs and properly handles SIGWINCH, job
   // control, and terminal I/O forwarding.
-  const result = nodeSpawnSync(args[0], args.slice(1), {
+  const result = nodeAgentseaSync(args[0], args.slice(1), {
     stdio: "inherit",
     env: env ?? process.env,
   });
@@ -273,7 +302,7 @@ export function spawnInteractive(args: string[], env?: Record<string, string | u
   }
   // Restore sane terminal settings (cooked mode, echo, etc.)
   tryCatch(() =>
-    nodeSpawnSync(
+    nodeAgentseaSync(
       "stty",
       [
         "sane",
@@ -468,16 +497,16 @@ export async function waitForSsh(opts: WaitForSshOpts): Promise<void> {
     sshArgs.push(...extraSshOpts);
   }
 
+  const runSshWait = async (handle?: { setDetail: (detail: string) => void }) => {
   // ── Phase 1: TCP probe ────────────────────────────────────────────────────
-  if (isSpawnVerbose()) {
+  if (isAgentseaVerbose()) {
     logStep("Waiting for SSH port to open...");
-  } else {
-    logAlwaysStep("Waiting for SSH (server may still be booting)…");
   }
   let attempt = 0;
   let tcpOpen = false;
   while (attempt < maxAttempts) {
     attempt += 1;
+    handle?.setDetail(`waiting for port 22 (${attempt}/${maxAttempts})`);
     const open = await tcpCheck(host, 22, 2000);
     if (open) {
       tcpOpen = true;
@@ -485,7 +514,7 @@ export async function waitForSsh(opts: WaitForSshOpts): Promise<void> {
       logInfo("SSH port 22 is open");
       break;
     }
-    if (attempt % 5 === 0 || attempt === 1) {
+    if (isAgentseaVerbose() && (attempt % 5 === 0 || attempt === 1)) {
       logStepInline(`Waiting for SSH port... (${attempt}/${maxAttempts} attempts)`);
     }
     await sleep(2000);
@@ -498,7 +527,7 @@ export async function waitForSsh(opts: WaitForSshOpts): Promise<void> {
   }
 
   // ── Phase 2: SSH handshake ────────────────────────────────────────────────
-  if (isSpawnVerbose()) {
+  if (isAgentseaVerbose()) {
     logStep("Waiting for SSH handshake...");
   }
   const remaining = maxAttempts - attempt;
@@ -506,6 +535,7 @@ export async function waitForSsh(opts: WaitForSshOpts): Promise<void> {
   const handshakeAttempts = Math.max(remaining, 5);
 
   for (let i = 1; i <= handshakeAttempts; i++) {
+    handle?.setDetail(`SSH handshake (${i}/${handshakeAttempts})`);
     const r = await asyncTryCatch(async () => {
       const proc = Bun.spawn(
         [
@@ -558,12 +588,8 @@ export async function waitForSsh(opts: WaitForSshOpts): Promise<void> {
       return inner.data;
     });
     if (r.ok && r.data !== null) {
-      if (isSpawnVerbose()) {
+      if (isAgentseaVerbose()) {
         logInfo("SSH is ready");
-      } else {
-        logAlwaysStep(
-          "SSH connected — setup continues on the server (large downloads like Chrome can take a few minutes). Pass --verbose for full remote output.",
-        );
       }
       return;
     }
@@ -575,6 +601,18 @@ export async function waitForSsh(opts: WaitForSshOpts): Promise<void> {
 
   logError(`SSH handshake failed after ${handshakeAttempts} attempts`);
   throw new Error("SSH connectivity timeout — handshake never succeeded");
+  };
+
+  if (isAgentseaVerbose()) {
+    await runSshWait();
+    return;
+  }
+
+  await runWithSpinner("Waiting for SSH (server may still be booting)…", (handle) => runSshWait(handle), {
+    doneMessage:
+      "SSH connected — setup continues on the server (large downloads can take a few minutes; pass --verbose for full output)",
+    formatMessage: ({ base, detail }) => (detail ? `${base} — ${detail}` : base),
+  });
 }
 
 /**

@@ -30,7 +30,7 @@ export interface AgentConfig {
   preProvision?: () => Promise<void>;
   /** Install the agent on the remote machine. */
   install: () => Promise<void>;
-  /** Return env var pairs for .spawnrc. */
+  /** Return env var pairs for .agentsearc. */
   envVars: (apiKey: string) => string[];
   /** Agent-specific configuration (settings files, etc.). */
   configure?: (apiKey: string, modelId?: string, enabledSteps?: Set<string>) => Promise<void>;
@@ -43,7 +43,7 @@ export interface AgentConfig {
   /**
    * Shell command to run the agent with a prompt non-interactively.
    * Used by headless mode when --prompt is provided.
-   * If undefined, headless --prompt will set SPAWN_PROMPT env var but not auto-execute.
+   * If undefined, headless --prompt will set AGENTSEA_PROMPT env var but not auto-execute.
    */
   promptCmd?: (prompt: string) => string;
   /** Cloud-init dependency tier. Defaults to "full" if unset. */
@@ -129,11 +129,11 @@ const AGENT_EXTRA_STEPS: Record<string, OptionalStep[]> = {
   ],
 };
 
-/** The "spawn" step — only shown when --beta recursive is active. */
-const SPAWN_STEP: OptionalStep = {
-  value: "spawn",
-  label: "Spawn CLI",
-  hint: "install spawn for recursive VM creation",
+/** The "agentsea" step — only shown when --beta recursive is active. */
+const AGENTSEA_STEP: OptionalStep = {
+  value: "agentsea",
+  label: "Agentsea CLI",
+  hint: "install agentsea for recursive VM creation",
   defaultOn: true,
 };
 
@@ -170,13 +170,13 @@ const COMMON_STEPS: OptionalStep[] = [
 
 /** Get the optional setup steps for a given agent (no CloudRunner required). */
 export function getAgentOptionalSteps(agentName: string): OptionalStep[] {
-  const betaFeatures = (process.env.SPAWN_BETA ?? "").split(",").filter(Boolean);
+  const betaFeatures = (process.env.AGENTSEA_BETA ?? "").split(",").filter(Boolean);
   const hasRecursive = betaFeatures.includes("recursive");
 
   const steps = hasRecursive
     ? [
         ...COMMON_STEPS,
-        SPAWN_STEP,
+        AGENTSEA_STEP,
       ]
     : [
         ...COMMON_STEPS,
@@ -217,19 +217,19 @@ export function validateStepNames(
 // ─── Shared Helpers ──────────────────────────────────────────────────────────
 
 /**
- * Generate env config content (shell export lines) for .spawnrc.
+ * Generate env config content (shell export lines) for .agentsearc.
  * Values are single-quoted to prevent injection.
  */
 export function generateEnvConfig(pairs: string[]): string {
   const lines = [
     "",
-    "# [spawn:env]",
+    "# [agentsea:env]",
     "export IS_SANDBOX='1'",
     "# UTF-8 locale — required for agent TUIs that use Unicode (e.g. Claude Code)",
     "export LANG='C.UTF-8'",
     "export LC_ALL='C.UTF-8'",
     "# Ensure agent binaries are in PATH on reconnect",
-    'export PATH="$HOME/.npm-global/bin:$HOME/.bun/bin:$HOME/.local/bin:$HOME/.cargo/bin:$HOME/.claude/local/bin:/usr/local/bin:$PATH"',
+    'export PATH="$HOME/.opencode/bin:$HOME/.npm-global/bin:$HOME/.bun/bin:$HOME/.local/bin:$HOME/.cargo/bin:$HOME/.claude/local/bin:/usr/local/bin:$PATH"',
   ];
   for (const pair of pairs) {
     const eqIdx = pair.indexOf("=");

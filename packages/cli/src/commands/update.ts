@@ -3,14 +3,16 @@ import { unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
-import { RAW_BASE, SPAWN_CDN, VERSION_URL } from "../manifest.js";
+import { RAW_BASE, VERSION_URL } from "../manifest.js";
+import { getCdnOrigin } from "../shared/cdn.js";
 import { parseJsonWith } from "../shared/parse.js";
 import { asyncTryCatch, isFileError, tryCatch, tryCatchIf } from "../shared/result.js";
 import { getInstallCmd, getInstallScriptUrl, isWindows } from "../shared/shell.js";
+import { logError } from "../shared/ui.js";
 import { getErrorMessage, PkgVersionSchema, VERSION } from "./shared.js";
 
-const INSTALL_URL = getInstallScriptUrl(SPAWN_CDN);
-const INSTALL_CMD = getInstallCmd(SPAWN_CDN);
+const INSTALL_URL = getInstallScriptUrl(getCdnOrigin());
+const INSTALL_CMD = getInstallCmd(getCdnOrigin());
 
 async function fetchRemoteVersion(): Promise<string> {
   // Primary: plain-text version file from GitHub release artifact (static URL)
@@ -63,7 +65,7 @@ function runWindowsUpdate(): void {
     },
   );
   // Write to temp file and execute via PowerShell (avoids string escaping issues)
-  const tmpFile = `${tmpdir()}\\spawn-install-${Date.now()}.ps1`;
+  const tmpFile = `${tmpdir()}\\agentsea-install-${Date.now()}.ps1`;
   writeFileSync(tmpFile, scriptContent ?? "");
   const execResult = tryCatch(() =>
     execFileSync(
@@ -129,9 +131,9 @@ async function performUpdate(runUpdate: () => void = defaultRunUpdate): Promise<
   if (r.ok) {
     console.log();
     p.log.success("Updated successfully!");
-    p.log.info("Run spawn again to use the new version.");
+    p.log.info("Run agentsea again to use the new version.");
   } else {
-    p.log.error("Auto-update failed. Update manually:");
+    logError("Auto-update failed. Update manually:");
     console.log();
     console.log(`  ${pc.cyan(INSTALL_CMD)}`);
     console.log();

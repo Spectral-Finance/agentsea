@@ -16,6 +16,7 @@
     "dev:clean": "npm run dev:clean --workspace=@agentsea/ui",
     "build": "npm run build --workspaces --if-present",
     "build:cli": "npm run build --workspace=@agentsea/cli",
+    "build:providers": "bash ./scripts/build-providers.sh",
     "dev:cli": "npm run build:cli && npm run start --workspace=@agentsea/cli",
     "agentsea": "npm exec --workspace=@agentsea/cli -- agentsea",
     "typecheck": "npm run typecheck --workspaces --if-present",
@@ -33,7 +34,7 @@
     "typescript": "^5.6.3"
   },
   "engines": {
-    "node": ">=20.10",
+    "node": ">=20.19.0",
     "npm": ">=10"
   }
 }

@@ -13,7 +13,7 @@ import {
 import { join } from "node:path";
 import { getErrorMessage } from "@agentsea/sdk";
 import * as v from "valibot";
-import { getHistoryPath, getProvisionRunsDir, getSpawnDir } from "./shared/paths.js";
+import { getHistoryPath, getProvisionRunsDir, getAgentseaDir } from "./shared/paths.js";
 import {
   isProvisioningIncomplete,
   PROVISION_PHASES,
@@ -38,7 +38,7 @@ export interface VMConnection {
   metadata?: Record<string, string>;
 }
 
-export interface SpawnRecord {
+export interface AgentseaRecord {
   id: string;
   agent: string;
   cloud: string;
@@ -90,7 +90,7 @@ const ProvisionStatusSchema = v.optional(
   ]),
 );
 
-export const SpawnRecordSchema = v.object({
+export const AgentseaRecordSchema = v.object({
   id: v.optional(v.string()), // optional for backwards compat with pre-migration records on disk
   agent: v.string(),
   cloud: v.string(),
@@ -110,13 +110,13 @@ export const SpawnRecordSchema = v.object({
 const CHECKPOINT_FILE_VERSION = 1;
 const CheckpointFileSchema = v.object({
   version: v.literal(1),
-  record: SpawnRecordSchema,
+  record: AgentseaRecordSchema,
 });
 
-/** v1 history file format: { version: 1, records: SpawnRecord[] } */
+/** v1 history file format: { version: 1, records: AgentseaRecord[] } */
 const HistoryFileV1Schema = v.object({
   version: v.literal(1),
-  records: v.array(SpawnRecordSchema),
+  records: v.array(AgentseaRecordSchema),
 });
 
 /** Loose v1 schema — validates shape but not individual records */
@@ -125,8 +125,8 @@ const HistoryFileV1LooseSchema = v.object({
   records: v.array(v.unknown()),
 });
 
-/** Generate a unique spawn ID. */
-export function generateSpawnId(): string {
+/** Generate a unique agentsea ID. */
+export function generateAgentseaId(): string {
   return randomUUID();
 }
 
@@ -141,11 +141,70 @@ const LOCK_TIMEOUT_MS = 5000; // Max time to wait for lock
 const LOCK_STALE_MS = 30_000; // Force-remove locks older than this
 const LOCK_POLL_MS = 50; // Poll interval when waiting
 
+/** Re-entrant lock depth — nested withHistoryLock calls must not fight the same PID. */
+let lockDepth = 0;
+let lockWarned = false;
+
 function getLockPath(): string {
   return `${getHistoryPath()}.lock`;
 }
 
+function forceRemoveLock(lockPath: string): void {
+  tryCatch(() => unlinkSync(join(lockPath, "pid")));
+  tryCatch(() => rmdirSync(lockPath));
+}
+
+type LockPidInfo = { pid: number; lockTime: number };
+
+function readLockPidInfo(lockPath: string): LockPidInfo | null {
+  const pidFile = join(lockPath, "pid");
+  if (!existsSync(pidFile)) {
+    return null;
+  }
+  const content = readFileSync(pidFile, "utf-8").trim();
+  if (!content) {
+    return null;
+  }
+  const lines = content.split("\n");
+  const pid = Number(lines[0]);
+  const lockTime = Number(lines[1]);
+  if (!Number.isFinite(pid) || !Number.isFinite(lockTime)) {
+    return null;
+  }
+  return { pid, lockTime };
+}
+
+/** True when the lock dir should be removed so another process (or this one) can acquire. */
+function shouldForceRemoveLock(lockPath: string): boolean {
+  const info = readLockPidInfo(lockPath);
+  if (!info) {
+    // Empty/missing pid file — broken lock left by a crash or partial write
+    return true;
+  }
+  if (info.pid === process.pid) {
+    // Same process already holds the lock (re-entrant call)
+    return false;
+  }
+  if (Date.now() - info.lockTime > LOCK_STALE_MS) {
+    return true;
+  }
+  return false;
+}
+
+function warnLockOnce(): void {
+  if (lockWarned) {
+    return;
+  }
+  lockWarned = true;
+  logWarn("Could not acquire history lock — proceeding without lock");
+}
+
 function acquireLock(): boolean {
+  if (lockDepth > 0) {
+    lockDepth++;
+    return true;
+  }
+
   const lockPath = getLockPath();
   const deadline = Date.now() + LOCK_TIMEOUT_MS;
 
@@ -158,49 +217,51 @@ function acquireLock(): boolean {
       const pidWriteResult = tryCatch(() => writeFileSync(join(lockPath, "pid"), `${process.pid}\n${Date.now()}`));
       if (!pidWriteResult.ok) {
         // PID write failed — clean up and retry so we don't leave an undetectable lock
-        tryCatch(() => rmdirSync(lockPath));
+        forceRemoveLock(lockPath);
         continue;
       }
+      lockDepth = 1;
       return true;
     }
 
-    // Lock exists — check if stale
-    const staleResult = tryCatch(() => {
-      const pidFile = join(lockPath, "pid");
-      if (existsSync(pidFile)) {
-        const content = readFileSync(pidFile, "utf-8");
-        const lines = content.split("\n");
-        const lockTime = Number(lines[1]);
-        if (lockTime && Date.now() - lockTime > LOCK_STALE_MS) {
-          // Stale lock — force remove
-          tryCatch(() => unlinkSync(join(lockPath, "pid")));
-          tryCatch(() => rmdirSync(lockPath));
-          return true; // Retry on next iteration
-        }
-      } else {
-        // Lock dir exists but no PID file — broken lock, force remove
-        tryCatch(() => rmdirSync(lockPath));
+    // Lock exists — remove if broken, stale, or held by this PID (re-entrancy)
+    const info = readLockPidInfo(lockPath);
+    if (info?.pid === process.pid) {
+      lockDepth = 1;
+      return true;
+    }
+
+    const removeResult = tryCatch(() => {
+      if (shouldForceRemoveLock(lockPath)) {
+        forceRemoveLock(lockPath);
         return true;
       }
       return false;
     });
 
-    if (staleResult.ok && staleResult.data) {
-      continue; // Stale lock removed, retry immediately
+    if (removeResult.ok && removeResult.data) {
+      continue;
     }
 
-    // Wait and retry
     Bun.sleepSync(LOCK_POLL_MS);
   }
 
-  logWarn("Could not acquire history lock — proceeding without lock");
+  // Last resort: clear a broken lock so the next write is not penalized again
+  if (shouldForceRemoveLock(lockPath)) {
+    forceRemoveLock(lockPath);
+  }
+
+  warnLockOnce();
   return false;
 }
 
 function releaseLock(): void {
-  const lockPath = getLockPath();
-  tryCatch(() => unlinkSync(join(lockPath, "pid")));
-  tryCatch(() => rmdirSync(lockPath));
+  if (lockDepth > 1) {
+    lockDepth--;
+    return;
+  }
+  lockDepth = 0;
+  forceRemoveLock(getLockPath());
 }
 
 /** Run a function while holding the history file lock.
@@ -218,7 +279,7 @@ function withHistoryLock<T>(fn: () => T): T {
 }
 
 /** Atomically write a JSON file: write to a process-unique .tmp, then rename into place.
- * The unique suffix prevents races when multiple concurrent spawn processes write history. */
+ * The unique suffix prevents races when multiple concurrent agentsea processes write history. */
 function atomicWriteJson(filePath: string, data: unknown): void {
   const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
   writeFileSync(tmpPath, JSON.stringify(data, null, 2) + "\n", {
@@ -228,7 +289,7 @@ function atomicWriteJson(filePath: string, data: unknown): void {
 }
 
 /** Sidecar checkpoint so a crash after VM create can still be recovered (`agentsea resume --recover`). */
-export function writeProvisionCheckpoint(record: SpawnRecord): void {
+export function writeProvisionCheckpoint(record: AgentseaRecord): void {
   if (!record.id) {
     return;
   }
@@ -246,8 +307,8 @@ export function writeProvisionCheckpoint(record: SpawnRecord): void {
   });
 }
 
-export function readProvisionCheckpoint(spawnId: string): SpawnRecord | null {
-  const filePath = join(getProvisionRunsDir(), `${spawnId}.json`);
+export function readProvisionCheckpoint(agentseaId: string): AgentseaRecord | null {
+  const filePath = join(getProvisionRunsDir(), `${agentseaId}.json`);
   if (!existsSync(filePath)) {
     return null;
   }
@@ -260,25 +321,25 @@ export function readProvisionCheckpoint(spawnId: string): SpawnRecord | null {
     return null;
   }
   const r = parsed.output.record;
-  const rec: SpawnRecord = {
+  const rec: AgentseaRecord = {
     ...r,
-    id: r.id ?? spawnId,
+    id: r.id ?? agentseaId,
     provision_phase: r.provision_phase as ProvisionPhase | undefined,
     provision_status: r.provision_status as ProvisionStatus | undefined,
   };
   return rec;
 }
 
-export function deleteProvisionCheckpoint(spawnId: string): void {
-  tryCatch(() => unlinkSync(join(getProvisionRunsDir(), `${spawnId}.json`)));
+export function deleteProvisionCheckpoint(agentseaId: string): void {
+  tryCatch(() => unlinkSync(join(getProvisionRunsDir(), `${agentseaId}.json`)));
 }
 
-export function listProvisionCheckpoints(): SpawnRecord[] {
+export function listProvisionCheckpoints(): AgentseaRecord[] {
   const dir = getProvisionRunsDir();
   if (!existsSync(dir)) {
     return [];
   }
-  const out: SpawnRecord[] = [];
+  const out: AgentseaRecord[] = [];
   for (const f of readdirSync(dir)) {
     if (!f.endsWith(".json")) {
       continue;
@@ -293,7 +354,7 @@ export function listProvisionCheckpoints(): SpawnRecord[] {
 }
 
 /** Write history records to disk in v1 format: { version: 1, records: [...] } */
-function writeHistory(records: SpawnRecord[]): void {
+function writeHistory(records: AgentseaRecord[]): void {
   atomicWriteJson(getHistoryPath(), {
     version: HISTORY_SCHEMA_VERSION,
     records,
@@ -301,15 +362,15 @@ function writeHistory(records: SpawnRecord[]): void {
 }
 
 /** Save launch command to a history record's connection.
- *  Requires spawnId to target the correct record. */
-export function saveLaunchCmd(launchCmd: string, spawnId?: string): void {
+ *  Requires agentseaId to target the correct record. */
+export function saveLaunchCmd(launchCmd: string, agentseaId?: string): void {
   const result = tryCatchIf(isFileError, () => {
     withHistoryLock(() => {
       const history = loadHistory();
       let found = false;
 
-      if (spawnId) {
-        const idx = history.findIndex((r) => r.id === spawnId);
+      if (agentseaId) {
+        const idx = history.findIndex((r) => r.id === agentseaId);
         if (idx >= 0 && history[idx].connection) {
           history[idx].connection.launch_cmd = launchCmd;
           found = true;
@@ -338,15 +399,15 @@ export function saveLaunchCmd(launchCmd: string, spawnId?: string): void {
 }
 
 /** Merge metadata key-value pairs into a history record's connection.
- *  Requires spawnId to target the correct record. */
-export function saveMetadata(entries: Record<string, string>, spawnId?: string): void {
+ *  Requires agentseaId to target the correct record. */
+export function saveMetadata(entries: Record<string, string>, agentseaId?: string): void {
   const result = tryCatchIf(isFileError, () => {
     withHistoryLock(() => {
       const history = loadHistory();
       let found = false;
 
-      if (spawnId) {
-        const idx = history.findIndex((r) => r.id === spawnId);
+      if (agentseaId) {
+        const idx = history.findIndex((r) => r.id === agentseaId);
         if (idx >= 0 && history[idx].connection) {
           const conn = history[idx].connection;
           conn.metadata = {
@@ -393,12 +454,12 @@ function backupCorruptedFile(filePath: string): void {
 
 /** Try to parse valid records from a single archive file.
  *  Uses tryCatch (catch-all) because corrupted JSON is expected — SyntaxError is not a file error. */
-function parseArchiveFile(dir: string, file: string): SpawnRecord[] | null {
+function parseArchiveFile(dir: string, file: string): AgentseaRecord[] | null {
   const result = tryCatch(() => {
     const text = readFileSync(join(dir, file), "utf-8");
     const data: unknown = JSON.parse(text);
     if (Array.isArray(data)) {
-      return data.filter((el) => v.safeParse(SpawnRecordSchema, el).success);
+      return data.filter((el) => v.safeParse(AgentseaRecordSchema, el).success);
     }
     return [];
   });
@@ -411,9 +472,9 @@ function parseArchiveFile(dir: string, file: string): SpawnRecord[] | null {
 /** Attempt to recover records from archive files (history-*.json).
  *  Uses tryCatch (catch-all) because archive recovery is best-effort — any failure returns [].
  *  Only checks the 30 most recent archives to avoid startup slowdowns. */
-function recoverFromArchives(): SpawnRecord[] {
+function recoverFromArchives(): AgentseaRecord[] {
   const result = tryCatch(() => {
-    const dir = getSpawnDir();
+    const dir = getAgentseaDir();
     const files = readdirSync(dir)
       .filter((f) => /^history-\d{4}-\d{2}-\d{2}\.json$/.test(f))
       .sort()
@@ -432,17 +493,17 @@ function recoverFromArchives(): SpawnRecord[] {
 }
 
 /** Backfill missing `id` field on parsed records (pre-migration records lack it). */
-function backfillRecordIds(records: v.InferOutput<typeof SpawnRecordSchema>[]): SpawnRecord[] {
+function backfillRecordIds(records: v.InferOutput<typeof AgentseaRecordSchema>[]): AgentseaRecord[] {
   return records.map((r) => ({
     ...r,
-    id: r.id ?? generateSpawnId(),
+    id: r.id ?? generateAgentseaId(),
     provision_phase: r.provision_phase as ProvisionPhase | undefined,
     provision_status: r.provision_status as ProvisionStatus | undefined,
   }));
 }
 
-/** Parse raw JSON into SpawnRecord[], handling all format versions. */
-function parseHistoryData(raw: unknown): SpawnRecord[] | null {
+/** Parse raw JSON into AgentseaRecord[], handling all format versions. */
+function parseHistoryData(raw: unknown): AgentseaRecord[] | null {
   // v1 format: { version: 1, records: [...] } — strict check
   const v1 = v.safeParse(HistoryFileV1Schema, raw);
   if (v1.success) {
@@ -453,9 +514,9 @@ function parseHistoryData(raw: unknown): SpawnRecord[] | null {
   const v1Loose = v.safeParse(HistoryFileV1LooseSchema, raw);
   if (v1Loose.success) {
     const allRecords = v1Loose.output.records;
-    const valid: v.InferOutput<typeof SpawnRecordSchema>[] = [];
+    const valid: v.InferOutput<typeof AgentseaRecordSchema>[] = [];
     for (const el of allRecords) {
-      const result = v.safeParse(SpawnRecordSchema, el);
+      const result = v.safeParse(AgentseaRecordSchema, el);
       if (result.success) {
         valid.push(result.output);
       }
@@ -469,9 +530,9 @@ function parseHistoryData(raw: unknown): SpawnRecord[] | null {
 
   // v0 format: bare array (pre-versioning; migrated to v1 on next write)
   if (Array.isArray(raw)) {
-    const valid: v.InferOutput<typeof SpawnRecordSchema>[] = [];
+    const valid: v.InferOutput<typeof AgentseaRecordSchema>[] = [];
     for (const el of raw) {
-      const result = v.safeParse(SpawnRecordSchema, el);
+      const result = v.safeParse(AgentseaRecordSchema, el);
       if (result.success) {
         valid.push(result.output);
       }
@@ -483,14 +544,14 @@ function parseHistoryData(raw: unknown): SpawnRecord[] | null {
   return null;
 }
 
-export function loadHistory(): SpawnRecord[] {
+export function loadHistory(): AgentseaRecord[] {
   const path = getHistoryPath();
   if (!existsSync(path)) {
     return [];
   }
   const readResult = tryCatchIf(isFileError, () => readFileSync(path, "utf-8"));
   if (!readResult.ok) {
-    logWarn("Could not read spawn history");
+    logWarn("Could not read agentsea history");
     logDebug(getErrorMessage(readResult.error));
     return [];
   }
@@ -511,7 +572,7 @@ export function loadHistory(): SpawnRecord[] {
     // Backfill IDs on legacy records that don't have one
     for (const r of records) {
       if (!r.id) {
-        r.id = generateSpawnId();
+        r.id = generateAgentseaId();
       }
     }
     return records;
@@ -522,8 +583,8 @@ export function loadHistory(): SpawnRecord[] {
   return recoverFromArchives();
 }
 
-export function saveSpawnRecord(record: SpawnRecord): void {
-  const dir = getSpawnDir();
+export function saveAgentseaRecord(record: AgentseaRecord): void {
+  const dir = getAgentseaDir();
   if (!existsSync(dir)) {
     mkdirSync(dir, {
       recursive: true,
@@ -532,7 +593,7 @@ export function saveSpawnRecord(record: SpawnRecord): void {
   }
   // Every record must have an id
   if (!record.id) {
-    record.id = generateSpawnId();
+    record.id = generateAgentseaId();
   }
 
   withHistoryLock(() => {
@@ -542,9 +603,9 @@ export function saveSpawnRecord(record: SpawnRecord): void {
   });
 }
 
-/** Insert or replace by `id` (provisioning updates the same spawn row). Syncs crash-safe checkpoint. */
-export function upsertSpawnRecord(record: SpawnRecord): void {
-  const dir = getSpawnDir();
+/** Insert or replace by `id` (provisioning updates the same agentsea row). Syncs crash-safe checkpoint. */
+export function upsertAgentseaRecord(record: AgentseaRecord): void {
+  const dir = getAgentseaDir();
   if (!existsSync(dir)) {
     mkdirSync(dir, {
       recursive: true,
@@ -552,10 +613,10 @@ export function upsertSpawnRecord(record: SpawnRecord): void {
     });
   }
   if (!record.id) {
-    record.id = generateSpawnId();
+    record.id = generateAgentseaId();
   }
 
-  let merged: SpawnRecord;
+  let merged: AgentseaRecord;
   withHistoryLock(() => {
     const history = loadHistory();
     const idx = history.findIndex((r) => r.id === record.id);
@@ -570,15 +631,15 @@ export function upsertSpawnRecord(record: SpawnRecord): void {
   writeProvisionCheckpoint(merged!);
 }
 
-/** Patch fields on a spawn by id and refresh checkpoint (caller should set provision_* fields as needed). */
-export function patchSpawnRecord(spawnId: string, patch: Partial<SpawnRecord>): void {
+/** Patch fields on a agentsea by id and refresh checkpoint (caller should set provision_* fields as needed). */
+export function patchAgentseaRecord(agentseaId: string, patch: Partial<AgentseaRecord>): void {
   withHistoryLock(() => {
     const history = loadHistory();
-    const idx = history.findIndex((r) => r.id === spawnId);
+    const idx = history.findIndex((r) => r.id === agentseaId);
     if (idx < 0) {
       return;
     }
-    const merged: SpawnRecord = {
+    const merged: AgentseaRecord = {
       ...history[idx]!,
       ...patch,
       provision_updated_at: patch.provision_updated_at ?? new Date().toISOString(),
@@ -603,7 +664,7 @@ export function clearHistory(): number {
 }
 
 /** Find a record's index by id, falling back to timestamp+agent+cloud for old records. */
-function findRecordIndex(history: SpawnRecord[], record: SpawnRecord): number {
+function findRecordIndex(history: AgentseaRecord[], record: AgentseaRecord): number {
   if (record.id) {
     const idx = history.findIndex((r) => r.id === record.id);
     if (idx >= 0) {
@@ -617,7 +678,7 @@ function findRecordIndex(history: SpawnRecord[], record: SpawnRecord): number {
 }
 
 /** Remove a record from history entirely (soft delete — no cloud API call). */
-export function removeRecord(record: SpawnRecord): boolean {
+export function removeRecord(record: AgentseaRecord): boolean {
   return withHistoryLock(() => {
     const history = loadHistory();
     const index = findRecordIndex(history, record);
@@ -630,7 +691,7 @@ export function removeRecord(record: SpawnRecord): boolean {
   });
 }
 
-export function markRecordDeleted(record: SpawnRecord): boolean {
+export function markRecordDeleted(record: AgentseaRecord): boolean {
   return withHistoryLock(() => {
     const history = loadHistory();
     const index = findRecordIndex(history, record);
@@ -649,7 +710,7 @@ export function markRecordDeleted(record: SpawnRecord): boolean {
 }
 
 /** Update the IP address on a history record's connection. Returns true if the record was found and updated. */
-export function updateRecordIp(record: SpawnRecord, newIp: string): boolean {
+export function updateRecordIp(record: AgentseaRecord, newIp: string): boolean {
   return withHistoryLock(() => {
     const history = loadHistory();
     const index = findRecordIndex(history, record);
@@ -668,7 +729,7 @@ export function updateRecordIp(record: SpawnRecord, newIp: string): boolean {
 
 /** Update connection fields (ip, server_id, server_name) on a history record. Used for remapping to a different instance. */
 export function updateRecordConnection(
-  record: SpawnRecord,
+  record: AgentseaRecord,
   updates: {
     ip?: string;
     server_id?: string;
@@ -699,14 +760,55 @@ export function updateRecordConnection(
   });
 }
 
-export function getActiveServers(): SpawnRecord[] {
+export function getActiveServers(): AgentseaRecord[] {
   const records = loadHistory();
   return records.filter((r) => r.connection?.cloud && r.connection.cloud !== "local" && !r.connection.deleted);
 }
 
-/** Merge child spawn records into local history.
- *  Sets parent_id on each child record and deduplicates by spawn ID. */
-export function mergeChildHistory(parentSpawnId: string, childRecords: SpawnRecord[]): void {
+/**
+ * Active local-run history entries (cloud === "local", not soft-deleted).
+ * These have no cloud VM to destroy; `delete` uses them so it can prune local
+ * runs from history instead of reporting "No active servers to delete".
+ */
+export function getActiveLocalRecords(): AgentseaRecord[] {
+  const records = loadHistory();
+  return records.filter((r) => r.connection?.cloud === "local" && !r.connection.deleted);
+}
+
+/** Active cloud VMs plus local runs — used by `list` and `delete` pickers. */
+export function getActiveListRecords(): AgentseaRecord[] {
+  return [
+    ...getActiveServers(),
+    ...getActiveLocalRecords(),
+  ];
+}
+
+/**
+ * For local runs, find an existing active (non-deleted) local record matching
+ * the same agent + name so a retry can reuse its id and upsert the same row
+ * instead of appending a duplicate (issue #21 — retries created multiple rows,
+ * including duplicate names). Returns the newest match, or undefined.
+ */
+export function findReusableLocalRecordId(agent: string, name?: string): string | undefined {
+  const wanted = (name ?? "").trim();
+  const matches = loadHistory().filter(
+    (r) =>
+      !!r.id &&
+      r.agent === agent &&
+      r.cloud === "local" &&
+      !r.connection?.deleted &&
+      (r.name ?? "").trim() === wanted,
+  );
+  if (matches.length === 0) {
+    return undefined;
+  }
+  matches.sort((a, b) => (b.timestamp ?? "").localeCompare(a.timestamp ?? ""));
+  return matches[0]!.id;
+}
+
+/** Merge child agentsea records into local history.
+ *  Sets parent_id on each child record and deduplicates by agentsea ID. */
+export function mergeChildHistory(parentAgentseaId: string, childRecords: AgentseaRecord[]): void {
   if (childRecords.length === 0) {
     return;
   }
@@ -717,7 +819,7 @@ export function mergeChildHistory(parentSpawnId: string, childRecords: SpawnReco
 
     for (const child of childRecords) {
       if (!child.id) {
-        child.id = generateSpawnId();
+        child.id = generateAgentseaId();
       }
       // Skip duplicates
       if (existingIds.has(child.id)) {
@@ -725,7 +827,7 @@ export function mergeChildHistory(parentSpawnId: string, childRecords: SpawnReco
       }
       // Ensure parent_id is set
       if (!child.parent_id) {
-        child.parent_id = parentSpawnId;
+        child.parent_id = parentAgentseaId;
       }
       history.push(child);
       existingIds.add(child.id);
@@ -735,13 +837,13 @@ export function mergeChildHistory(parentSpawnId: string, childRecords: SpawnReco
   });
 }
 
-/** Export history records as JSON string (for `spawn history export`). */
+/** Export history records as JSON string (for `agentsea history export`). */
 export function exportHistory(): string {
   const records = loadHistory();
   return JSON.stringify(records, null, 2);
 }
 
-export function filterHistory(agentFilter?: string, cloudFilter?: string): SpawnRecord[] {
+export function filterHistory(agentFilter?: string, cloudFilter?: string): AgentseaRecord[] {
   let records = loadHistory();
   if (agentFilter) {
     const lower = agentFilter.toLowerCase();

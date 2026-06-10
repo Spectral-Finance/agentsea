@@ -8,9 +8,9 @@ import { readFileSync } from "node:fs";
 import * as p from "@clack/prompts";
 import { isString } from "@agentsea/sdk";
 import { parseJsonObj } from "./parse.js";
-import { getSpawnCloudConfigPath } from "./paths.js";
+import { getAgentseaCloudConfigPath } from "./paths.js";
 import { asyncTryCatch, tryCatch, unwrapOr } from "./result.js";
-import { isSpawnVerbose } from "./verbosity.js";
+import { isAgentseaVerbose } from "./verbosity.js";
 import { isWslLinux } from "./shell.js";
 import { captureError, captureWarning } from "./telemetry.js";
 
@@ -19,17 +19,17 @@ const CYAN = "\x1b[0;36m";
 const DIM = "\x1b[2m";
 const NC = "\x1b[0m";
 
-/** Operational detail — hidden unless `--verbose` or `SPAWN_VERBOSE=1`. */
+/** Operational detail — hidden unless `--verbose` or `AGENTSEA_VERBOSE=1`. */
 export function logInfo(msg: string): void {
-  if (!isSpawnVerbose()) {
+  if (!isAgentseaVerbose()) {
     return;
   }
   process.stderr.write(`${GREEN}${msg}${NC}\n`);
 }
 
-/** Log a debug message to stderr (dim text). Only visible when SPAWN_DEBUG=1. */
+/** Log a debug message to stderr (dim text). Only visible when AGENTSEA_DEBUG=1. */
 export function logDebug(msg: string): void {
-  if (process.env.SPAWN_DEBUG === "1") {
+  if (process.env.AGENTSEA_DEBUG === "1") {
     process.stderr.write(`${DIM}[debug] ${msg}${NC}\n`);
   }
 }
@@ -44,14 +44,22 @@ export function logWarn(msg: string): void {
   captureWarning(msg);
 }
 
+/** Reset stderr SGR after Clack log output so later writes don't inherit red/error styling. */
+export function resetStderrAttributes(): void {
+  if (process.stderr.isTTY) {
+    process.stderr.write(NC);
+  }
+}
+
 export function logError(msg: string): void {
   p.log.error(msg, CLACK_LOG_OPTS);
+  resetStderrAttributes();
   captureError("log_error", msg);
 }
 
 /** Operational progress — hidden unless verbose (use {@link logAlwaysStep} for required UX). */
 export function logStep(msg: string): void {
-  if (!isSpawnVerbose()) {
+  if (!isAgentseaVerbose()) {
     return;
   }
   process.stderr.write(`${CYAN}${msg}${NC}\n`);
@@ -70,7 +78,7 @@ export function logAlwaysStep(msg: string): void {
 /** Overwrite the current line with a status message (no newline). Call logStepDone() when finished.
  *  Falls back to newline-separated output when stderr is not a TTY (e.g., piped or captured). */
 export function logStepInline(msg: string): void {
-  if (!isSpawnVerbose()) {
+  if (!isAgentseaVerbose()) {
     return;
   }
   if (process.stderr.isTTY) {
@@ -87,6 +95,228 @@ export function logStepDone(): void {
   }
 }
 
+/** Compact elapsed time for provision spinners (`45s`, `2m 15s`). */
+export function formatProvisionElapsed(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds));
+  if (s < 60) {
+    return `${s}s`;
+  }
+  const minutes = Math.floor(s / 60);
+  const rem = s % 60;
+  return rem > 0 ? `${minutes}m ${rem}s` : `${minutes}m`;
+}
+
+export type SpinnerHandle = {
+  /** Sub-status shown beside the main spinner label (e.g. `check 3/60`). */
+  setDetail: (detail: string) => void;
+};
+
+export type RunWithSpinnerOptions = {
+  doneMessage?: string;
+  failMessage?: string;
+  /** Spinner label refresh interval. Default 1000ms. */
+  tickMs?: number;
+  /** Build the animated label; defaults to message + detail + elapsed. */
+  formatMessage?: (ctx: { base: string; detail: string; elapsedSec: number }) => string;
+};
+
+function defaultSpinnerMessage(ctx: { base: string; detail: string; elapsedSec: number }): string {
+  const elapsed = formatProvisionElapsed(ctx.elapsedSec);
+  if (ctx.detail) {
+    return `${ctx.base} — ${ctx.detail} (${elapsed})`;
+  }
+  return `${ctx.base} (${elapsed})`;
+}
+
+const UNICODE_SPINNER_FRAMES = ["◐", "◓", "◑", "◒"] as const;
+const ASCII_SPINNER_FRAMES = ["|", "/", "-", "\\"] as const;
+const SPINNER_ANIM_MS = 80;
+const THROTTLED_STEP_MIN_GAP_MS = 3000;
+const THROTTLED_STEP_HEARTBEAT_MS = 10_000;
+
+type SpinnerMode = "inline" | "throttled" | "plain";
+
+function spinnerFrames(): readonly string[] {
+  return process.env.TERM === "linux" ? ASCII_SPINNER_FRAMES : UNICODE_SPINNER_FRAMES;
+}
+
+function resolveSpinnerMode(): SpinnerMode {
+  if (!process.stderr.isTTY || process.env.AGENTSEA_NO_SPINNER === "1") {
+    return "plain";
+  }
+  if (process.env.AGENTSEA_INLINE_SPINNER === "0") {
+    return "throttled";
+  }
+  if (process.env.AGENTSEA_INLINE_SPINNER === "1") {
+    return "inline";
+  }
+  // WSL ConPTY often ignores carriage returns on stderr (frames append horizontally).
+  if (isWslLinux()) {
+    return "throttled";
+  }
+  return "inline";
+}
+
+/** Prefer stdout on WSL when forcing inline — `\r` overwrite is more reliable there. */
+function inlineSpinnerStream(): NodeJS.WriteStream {
+  if (isWslLinux() && process.stdout.isTTY) {
+    return process.stdout;
+  }
+  return process.stderr;
+}
+
+function clearInlineSpinnerLine(stream: NodeJS.WriteStream): void {
+  stream.write("\r\x1b[K");
+}
+
+async function runInlineSpinner<T>(
+  buildLabel: () => string,
+  handle: SpinnerHandle,
+  fn: (handle: SpinnerHandle) => Promise<T>,
+  options: RunWithSpinnerOptions | undefined,
+  message: string,
+): Promise<T> {
+  const stream = inlineSpinnerStream();
+  const frames = spinnerFrames();
+  let frameIdx = 0;
+  const paintFrame = () => {
+    const frame = frames[frameIdx % frames.length] ?? frames[0] ?? "…";
+    frameIdx += 1;
+    stream.write(`\r${frame}  ${buildLabel()}\x1b[K`);
+  };
+
+  paintFrame();
+  const tickTimer = setInterval(paintFrame, SPINNER_ANIM_MS);
+
+  const r = await asyncTryCatch(() => fn(handle));
+  clearInterval(tickTimer);
+  clearInlineSpinnerLine(stream);
+  if (r.ok) {
+    logAlwaysStep(options?.doneMessage ?? message.replace(/…$/, ""));
+    return r.data;
+  }
+  logError(options?.failMessage ?? "Failed");
+  throw r.error;
+}
+
+async function runThrottledStepSpinner<T>(
+  buildLabel: () => string,
+  handle: SpinnerHandle,
+  fn: (handle: SpinnerHandle) => Promise<T>,
+  options: RunWithSpinnerOptions | undefined,
+  message: string,
+): Promise<T> {
+  let lastPrintedAt = 0;
+  let lastPrintedDetail = "";
+
+  const publish = (label: string, force = false) => {
+    const now = Date.now();
+    if (!force && now - lastPrintedAt < THROTTLED_STEP_MIN_GAP_MS) {
+      return;
+    }
+    lastPrintedAt = now;
+    logAlwaysStep(label);
+  };
+
+  publish(message, true);
+
+  const wrappedHandle: SpinnerHandle = {
+    setDetail(next: string) {
+      handle.setDetail(next);
+      if (next !== lastPrintedDetail) {
+        lastPrintedDetail = next;
+        publish(buildLabel());
+      }
+    },
+  };
+
+  const heartbeat = setInterval(() => publish(buildLabel()), THROTTLED_STEP_HEARTBEAT_MS);
+
+  try {
+    const r = await asyncTryCatch(() => fn(wrappedHandle));
+    if (r.ok) {
+      logAlwaysStep(options?.doneMessage ?? message.replace(/…$/, ""));
+      return r.data;
+    }
+    logError(options?.failMessage ?? "Failed");
+    throw r.error;
+  } finally {
+    clearInterval(heartbeat);
+  }
+}
+
+/**
+ * Run async work with progress feedback: inline spinner (TTY), throttled steps (WSL), or periodic lines.
+ * Use {@link SpinnerHandle.setDetail} inside `fn` for incremental sub-status.
+ */
+export async function runWithSpinner<T>(
+  message: string,
+  fn: (handle: SpinnerHandle) => Promise<T>,
+  options?: RunWithSpinnerOptions,
+): Promise<T> {
+  const tickMs = options?.tickMs ?? 1000;
+  const formatMessage = options?.formatMessage ?? defaultSpinnerMessage;
+  let detail = "";
+  const handle: SpinnerHandle = {
+    setDetail(next: string) {
+      detail = next;
+    },
+  };
+
+  const start = Date.now();
+  const buildLabel = () =>
+    formatMessage({
+      base: message,
+      detail,
+      elapsedSec: Math.floor((Date.now() - start) / 1000),
+    });
+
+  const mode = resolveSpinnerMode();
+  if (mode === "inline") {
+    return runInlineSpinner(buildLabel, handle, fn, options, message);
+  }
+  if (mode === "throttled") {
+    return runThrottledStepSpinner(buildLabel, handle, fn, options, message);
+  }
+
+  let fallbackTimer: ReturnType<typeof setInterval> | undefined;
+  let lastFallbackLog = 0;
+  logAlwaysStep(message);
+  fallbackTimer = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - start) / 1000);
+    if (elapsed - lastFallbackLog >= 5) {
+      lastFallbackLog = elapsed;
+      logAlwaysStep(buildLabel());
+    }
+  }, tickMs);
+
+  try {
+    return await fn(handle);
+  } finally {
+    if (fallbackTimer) {
+      clearInterval(fallbackTimer);
+    }
+  }
+}
+
+/** Yes/no confirm via @clack/prompts — avoids nested free-text prompts that corrupt stdin after p.text. */
+export async function confirm(message: string, initialValue = false): Promise<boolean> {
+  if (process.env.AGENTSEA_NON_INTERACTIVE === "1") {
+    throw new Error("Cannot prompt: AGENTSEA_NON_INTERACTIVE is set");
+  }
+  resetStderrAttributes();
+  process.stderr.write("\n");
+  const result = await p.confirm({
+    message,
+    initialValue,
+  });
+  if (p.isCancel(result)) {
+    process.stderr.write("\n");
+    process.exit(0);
+  }
+  return result === true;
+}
+
 /** Prompt for a line of user input. Throws if non-interactive.
  *  Uses @clack/prompts instead of Node readline to avoid Bun #1707
  *  where readline interfaces silently close after @clack/prompts runs
@@ -94,8 +324,8 @@ export function logStepDone(): void {
  *  Rejects if stdin closes unexpectedly (e.g., post-clack state corruption)
  *  instead of hanging forever. */
 export async function prompt(question: string): Promise<string> {
-  if (process.env.SPAWN_NON_INTERACTIVE === "1") {
-    throw new Error("Cannot prompt: SPAWN_NON_INTERACTIVE is set");
+  if (process.env.AGENTSEA_NON_INTERACTIVE === "1") {
+    throw new Error("Cannot prompt: AGENTSEA_NON_INTERACTIVE is set");
   }
   // Strip trailing ": " or ":" since clack adds its own formatting
   const message = question.replace(/:\s*$/, "").trim();
@@ -153,7 +383,7 @@ export async function selectFromList(items: string[], promptText: string, defaul
   });
 
   if (parsed.length === 1) {
-    if (isSpawnVerbose()) {
+    if (isAgentseaVerbose()) {
       logInfo(`Using ${promptText}: ${parsed[0].id}`);
     }
     return parsed[0].id;
@@ -253,7 +483,7 @@ function powerShellOpenUrlCommand(url: string): [string, string[]] {
 
 /** WSL-only: rewrite loopback URLs to the distro NIC IP for Windows browsers that cannot use mirrored localhost into WSL (legacy). Prefer loopback unless this is set — OpenClaw’s Control UI rejects unknown Origins otherwise. */
 function shouldRewriteLoopbackOpenUrlForWsl(): boolean {
-  return process.env.SPAWN_WSL_OPEN_BROWSER_LAN_IP === "1";
+  return process.env.AGENTSEA_WSL_OPEN_BROWSER_LAN_IP === "1";
 }
 
 /** Open a URL in the user's browser. */
@@ -281,7 +511,7 @@ export function openBrowser(url: string): void {
     ],
   ];
 
-  /** WSL: open Windows browser; default loopback URL keeps OpenClaw allowedOrigins happy (set SPAWN_WSL_OPEN_BROWSER_LAN_IP=1 if needed). */
+  /** WSL: open Windows browser; default loopback URL keeps OpenClaw allowedOrigins happy (set AGENTSEA_WSL_OPEN_BROWSER_LAN_IP=1 if needed). */
   const wslAttempts: [
     string,
     string[],
@@ -376,12 +606,11 @@ export function openBrowser(url: string): void {
  * In non-interactive mode, always throws immediately.
  */
 export async function retryOrQuit(message: string): Promise<void> {
-  if (process.env.SPAWN_NON_INTERACTIVE === "1") {
+  if (process.env.AGENTSEA_NON_INTERACTIVE === "1") {
     throw new Error("Non-interactive mode: cannot retry");
   }
-  process.stderr.write("\n");
-  const answer = await prompt(`${message} (Y/n): `);
-  if (!answer || /^[Nn]/.test(answer)) {
+  const shouldRetry = await confirm(message, true);
+  if (!shouldRetry) {
     throw new Error("User chose to exit");
   }
 }
@@ -433,7 +662,7 @@ export async function withRetry<T>(
 export function loadApiToken(cloud: string): string | null {
   return unwrapOr(
     tryCatch(() => {
-      const data = parseJsonObj(readFileSync(getSpawnCloudConfigPath(cloud), "utf-8"));
+      const data = parseJsonObj(readFileSync(getAgentseaCloudConfigPath(cloud), "utf-8"));
       if (!data) {
         return null;
       }
@@ -502,7 +731,75 @@ export function validateModelId(id: string): boolean {
   return new RegExp(`^${segment}\/${segment}$`).test(t);
 }
 
-const GRID_MODEL_OTHER = "__grid_spawn_model_other__";
+const GRID_MODEL_OTHER = "__grid_agentsea_model_other__";
+
+export type HarnessGridModelSelection = {
+  primary?: string;
+  utility?: string;
+};
+
+/**
+ * Prompt separately for thinking (main) and heartbeat models from the catalogue.
+ * Skips heartbeat when the agent profile has no utility tier.
+ */
+export async function promptHarnessGridModels(
+  entries: Array<{ id: string; displayName?: string; funded: boolean }>,
+  suggestedPrimary: string,
+  agentSlug: string,
+  options?: { heartbeatOnly?: boolean },
+): Promise<HarnessGridModelSelection> {
+  if (entries.length === 0) {
+    return {};
+  }
+
+  const { agentSupportsHeartbeatModel, resolveGridInstrumentProfile } = await import("./grid-instruments.js");
+  const profile = resolveGridInstrumentProfile(agentSlug);
+  const catalogueIds = entries.map((entry) => entry.id);
+
+  if (options?.heartbeatOnly) {
+    if (!profile.utility) {
+      return {};
+    }
+    const utilitySuggested = catalogueIds.includes(profile.utility) ? profile.utility : suggestedPrimary;
+    const utility = await promptGridCatalogModelId(
+      entries,
+      utilitySuggested,
+      agentSlug,
+      "Which model for heartbeats?",
+      profile.utility,
+    );
+    return utility ? { utility } : {};
+  }
+
+  const primary = await promptGridCatalogModelId(
+    entries,
+    suggestedPrimary,
+    agentSlug,
+    "Which model for thinking?",
+    profile.primary,
+  );
+  if (!primary) {
+    return {};
+  }
+
+  if (!agentSupportsHeartbeatModel(agentSlug) || !profile.utility) {
+    return { primary };
+  }
+
+  const utilitySuggested = catalogueIds.includes(profile.utility) ? profile.utility : primary;
+  const utility = await promptGridCatalogModelId(
+    entries,
+    utilitySuggested,
+    agentSlug,
+    "Which model for heartbeats?",
+    profile.utility,
+  );
+  if (!utility) {
+    return {};
+  }
+
+  return { primary, utility };
+}
 
 /**
  * Let the user choose a model from The Grid catalogue.
@@ -511,21 +808,42 @@ const GRID_MODEL_OTHER = "__grid_spawn_model_other__";
 export async function promptGridCatalogModelId(
   entries: Array<{ id: string; displayName?: string; funded: boolean }>,
   suggestedId: string,
+  agentSlug?: string,
+  message?: string,
+  recommended?: string,
 ): Promise<string | undefined> {
   if (entries.length === 0) {
     return undefined;
   }
 
+  let resolvedRecommended = recommended;
+  if (!resolvedRecommended && agentSlug) {
+    const { resolveGridInstrumentProfile } = await import("./grid-instruments.js");
+    resolvedRecommended = resolveGridInstrumentProfile(agentSlug).primary;
+  }
+
   const catalogueIds = entries.map((entry) => entry.id);
   const initial = catalogueIds.includes(suggestedId) ? suggestedId : catalogueIds[0]!;
 
+  resetStderrAttributes();
+  process.stderr.write("\n");
+
   const choice = await p.select({
-    message: "Which Grid model should this server use?",
+    message:
+      message ??
+      (resolvedRecommended
+        ? `Which Grid model should this server use? (recommended: ${resolvedRecommended})`
+        : "Which Grid model should this server use?"),
     options: [
       ...entries.map((entry) => ({
         value: entry.id,
-        label: entry.id,
-        hint: entry.funded ? "credits available" : "no credits yet",
+        label: entry.id === resolvedRecommended ? `${entry.id} ★` : entry.id,
+        hint:
+          entry.id === resolvedRecommended
+            ? "recommended for this agent"
+            : entry.funded
+              ? "credits available"
+              : "no credits yet",
       })),
       {
         value: GRID_MODEL_OTHER,
@@ -586,7 +904,7 @@ export function dropletNameWithUuidSuffix(baseKebabInput: string): string {
   let base =
     typeof baseKebabInput === "string" && baseKebabInput.trim().length > 0 ? toKebabCase(baseKebabInput) : "";
   if (!base.length) {
-    base = "spawn";
+    base = "agentsea";
   }
 
   const maxBase = Math.max(1, 63 - 1 - uuid.length);
@@ -595,7 +913,7 @@ export function dropletNameWithUuidSuffix(baseKebabInput: string): string {
     base = base.slice(0, maxBase).replace(/-+$/u, "");
   }
   if (!base.length) {
-    base = "spawn";
+    base = "agentsea";
   }
 
   const candidate = `${base}-${uuid}`;
@@ -610,13 +928,27 @@ export function dropletNameWithUuidSuffix(baseKebabInput: string): string {
   return uuid.length >= 3 && uuid.length <= 63 && validateServerName(uuid) ? uuid : `s-${uuid.slice(0, 60)}`;
 }
 
-/** Generate a default spawn name (`spawn-<uuid>`). */
-export function defaultSpawnName(): string {
-  return dropletNameWithUuidSuffix("spawn");
+/**
+ * Default hostname base for cloud resources: the installed agent (`hermes`), not `agentsea`.
+ * AgentSea is implied by tooling; the droplet label should read as what's running on it.
+ */
+export function defaultCloudHostnameBase(agentSlug?: string): string {
+  const slug = typeof agentSlug === "string" ? toKebabCase(agentSlug.trim()) : "";
+  return slug || "agentsea";
+}
+
+/** Default in-app / prompt label — same as cloud hostname base (`hermes`). */
+export function defaultAgentseaLabel(agentSlug: string): string {
+  return defaultCloudHostnameBase(agentSlug);
+}
+
+/** Generate a default cloud hostname (`<agent>-<uuid>`, e.g. `hermes-<uuid>`). */
+export function defaultAgentseaName(agentSlug?: string): string {
+  return dropletNameWithUuidSuffix(defaultCloudHostnameBase(agentSlug));
 }
 
 /**
- * Get server name from a cloud-specific env var, falling back to SPAWN_NAME_KEBAB / defaultSpawnName.
+ * Get server name from a cloud-specific env var, falling back to AGENTSEA_NAME_KEBAB / defaultAgentseaName.
  * Every cloud module had an identical copy of this logic — now unified here.
  */
 export function getServerNameFromEnv(cloudEnvVar: string): string {
@@ -626,41 +958,45 @@ export function getServerNameFromEnv(cloudEnvVar: string): string {
       logError(`Invalid ${cloudEnvVar}: '${cloudName}'`);
       throw new Error("Invalid server name");
     }
-    if (isSpawnVerbose()) {
+    if (isAgentseaVerbose()) {
       logInfo(`Using server name from environment: ${cloudName}`);
     }
     return cloudName;
   }
 
-  const kebab = process.env.SPAWN_NAME_KEBAB || (process.env.SPAWN_NAME ? toKebabCase(process.env.SPAWN_NAME) : "");
-  return kebab || defaultSpawnName();
+  const agentSlug = process.env.AGENTSEA_AGENT_SLUG?.trim();
+  const kebab = process.env.AGENTSEA_NAME_KEBAB || (process.env.AGENTSEA_NAME ? toKebabCase(process.env.AGENTSEA_NAME) : "");
+  return kebab || defaultAgentseaName(agentSlug || undefined);
 }
 
 /**
- * Prompt user for a spawn name (or derive it non-interactively).
+ * Prompt user for a agentsea name (or derive it non-interactively).
  * Every cloud module had an identical copy of this logic — now unified here.
  *
  * @param cloudLabel - Display label for the prompt (e.g. "AWS instance", "Hetzner server")
  */
-export async function promptSpawnNameShared(cloudLabel: string): Promise<void> {
-  if (process.env.SPAWN_NAME_KEBAB) {
+export async function promptAgentseaNameShared(cloudLabel: string): Promise<void> {
+  if (process.env.AGENTSEA_NAME_KEBAB) {
     return;
   }
 
   let kebab: string;
-  if (process.env.SPAWN_NON_INTERACTIVE === "1") {
-    kebab = (process.env.SPAWN_NAME ? toKebabCase(process.env.SPAWN_NAME) : "") || defaultSpawnName();
+  const agentSlug = process.env.AGENTSEA_AGENT_SLUG?.trim();
+  if (process.env.AGENTSEA_NON_INTERACTIVE === "1") {
+    kebab =
+      (process.env.AGENTSEA_NAME ? toKebabCase(process.env.AGENTSEA_NAME) : "") ||
+      defaultAgentseaName(agentSlug || undefined);
   } else {
-    const derived = process.env.SPAWN_NAME ? toKebabCase(process.env.SPAWN_NAME) : "";
-    const fallback = derived || defaultSpawnName();
+    const derived = process.env.AGENTSEA_NAME ? toKebabCase(process.env.AGENTSEA_NAME) : "";
+    const fallback = derived || defaultAgentseaName(agentSlug || undefined);
     process.stderr.write("\n");
     const answer = await prompt(`${cloudLabel} name [${fallback}]: `);
-    kebab = toKebabCase(answer || fallback) || defaultSpawnName();
+    kebab = toKebabCase(answer || fallback) || defaultAgentseaName(agentSlug || undefined);
   }
 
-  process.env.SPAWN_NAME_DISPLAY = kebab;
-  process.env.SPAWN_NAME_KEBAB = kebab;
-  if (isSpawnVerbose()) {
+  process.env.AGENTSEA_NAME_DISPLAY = kebab;
+  process.env.AGENTSEA_NAME_KEBAB = kebab;
+  if (isAgentseaVerbose()) {
     logInfo(`Using resource name: ${kebab}`);
   }
 }
@@ -712,7 +1048,7 @@ export function prepareStdinForHandoff(): void {
 
   // Stop the stream from reading, but do NOT destroy it (that can close fd 0).
   // Do NOT call unref() here — it allows the event loop to exit before an
-  // async child process (spawnBash) finishes. The spawnInteractive path uses
+  // async child process (agentseaBash) finishes. The agentseaInteractive path uses
   // spawnSync so the event loop is already blocked.
   process.stdin.pause();
 }

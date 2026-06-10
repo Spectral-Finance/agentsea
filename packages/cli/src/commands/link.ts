@@ -1,19 +1,20 @@
-// commands/link.ts — spawn link: reconnect an existing cloud deployment to spawn
+// commands/link.ts — agentsea link: reconnect an existing cloud deployment to agentsea
 //
 // Lets users re-register a running remote VM by IP address, so that
-// spawn list/delete/fix all work seamlessly on the re-connected server.
+// agentsea list/delete/fix all work seamlessly on the re-connected server.
 
 import { spawnSync } from "node:child_process";
 import { connect } from "node:net";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
-import { generateSpawnId, saveSpawnRecord } from "../history.js";
+import { generateAgentseaId, saveAgentseaRecord } from "../history.js";
 import { agentKeys, cloudKeys, loadManifest } from "../manifest.js";
 import { validateConnectionIP, validateUsername } from "../security.js";
 import { asyncTryCatch, tryCatch } from "../shared/result.js";
 import { AGENTSEA_CLI } from "../shared/cli-invocation.js";
-import { SSH_BASE_OPTS, SSH_INTERACTIVE_OPTS, spawnInteractive } from "../shared/ssh.js";
+import { SSH_BASE_OPTS, SSH_INTERACTIVE_OPTS, agentseaInteractive } from "../shared/ssh.js";
 import { ensureSshKeys, getSshKeyOpts } from "../shared/ssh-keys.js";
+import { logError } from "../shared/ui.js";
 import { getErrorMessage, handleCancel, isInteractiveTTY } from "./shared.js";
 
 // ─── TCP check ───────────────────────────────────────────────────────────────
@@ -182,10 +183,10 @@ export interface LinkOptions {
 // ─── Main command ─────────────────────────────────────────────────────────────
 
 /**
- * spawn link <ip> [--agent <agent>] [--cloud <cloud>] [--user <user>] [--name <name>]
+ * agentsea link <ip> [--agent <agent>] [--cloud <cloud>] [--user <user>] [--name <name>]
  *
- * Re-registers an existing cloud deployment in spawn's local state so that
- * spawn list, spawn delete, spawn fix, etc. all work on it.
+ * Re-registers an existing cloud deployment in agentsea's local state so that
+ * agentsea list, agentsea delete, agentsea fix, etc. all work on it.
  */
 export async function cmdLink(args: string[], options?: LinkOptions): Promise<void> {
   const tcpCheckFn = options?.tcpCheck ?? defaultTcpCheck;
@@ -253,7 +254,7 @@ export async function cmdLink(args: string[], options?: LinkOptions): Promise<vo
   // Validate SSH user
   const userValidation = tryCatch(() => validateUsername(sshUser));
   if (!userValidation.ok) {
-    p.log.error(`Invalid SSH user: ${sshUser}`);
+    logError(`Invalid SSH user: ${sshUser}`);
     p.log.info("Username must be lowercase letters, digits, underscores, or hyphens (e.g. root, ubuntu, ec2-user)");
     process.exit(1);
   }
@@ -267,7 +268,7 @@ export async function cmdLink(args: string[], options?: LinkOptions): Promise<vo
   const reachable = await tcpCheckFn(ip, 22, 10000);
   if (!reachable) {
     connectSpinner.stop(`Cannot reach ${ip} on port 22`);
-    p.log.error(`SSH port 22 is not reachable at ${pc.bold(ip)}.`);
+    logError(`SSH port 22 is not reachable at ${pc.bold(ip)}.`);
     p.log.info("Make sure the server is running and port 22 is open.");
     p.log.info(`Try manually: ${pc.cyan(`ssh root@${ip}`)}`);
     process.exit(1);
@@ -310,7 +311,7 @@ export async function cmdLink(args: string[], options?: LinkOptions): Promise<vo
   // ── Prompt for agent if not detected ──────────────────────────────────────
   if (!detectedAgent) {
     if (!isInteractiveTTY()) {
-      p.log.error("Could not auto-detect agent. Use --agent <agent> to specify it.");
+      logError("Could not auto-detect agent. Use --agent <agent> to specify it.");
       p.log.info(`Example: ${pc.cyan(`${AGENTSEA_CLI} link ${ip} --agent claude`)}`);
       if (manifest) {
         const agents = agentKeys(manifest);
@@ -349,7 +350,7 @@ export async function cmdLink(args: string[], options?: LinkOptions): Promise<vo
   // ── Prompt for cloud if not detected ──────────────────────────────────────
   if (!detectedCloud) {
     if (!isInteractiveTTY()) {
-      p.log.error("Could not auto-detect cloud provider. Use --cloud <cloud> to specify it.");
+      logError("Could not auto-detect cloud provider. Use --cloud <cloud> to specify it.");
       p.log.info(`Example: ${pc.cyan(`${AGENTSEA_CLI} link ${ip} --cloud hetzner`)}`);
       if (manifest) {
         const clouds = cloudKeys(manifest).filter((c) => c !== "local");
@@ -388,7 +389,7 @@ export async function cmdLink(args: string[], options?: LinkOptions): Promise<vo
 
   // ── Confirm details ────────────────────────────────────────────────────────
   const safeIpSegment = ip.replace(/\./g, "-");
-  const spawnName = nameFlag ?? `${detectedAgent}-${safeIpSegment}`;
+  const agentseaName = nameFlag ?? `${detectedAgent}-${safeIpSegment}`;
 
   if (isInteractiveTTY()) {
     const agentLabel = manifest?.agents[detectedAgent]?.name ?? detectedAgent;
@@ -398,7 +399,7 @@ export async function cmdLink(args: string[], options?: LinkOptions): Promise<vo
     p.log.info(`  User:  ${sshUser}`);
     p.log.info(`  Agent: ${agentLabel}`);
     p.log.info(`  Cloud: ${cloudLabel}`);
-    p.log.info(`  Name:  ${spawnName}`);
+    p.log.info(`  Name:  ${agentseaName}`);
 
     const confirmed = await p.confirm({
       message: "Register this deployment?",
@@ -413,11 +414,11 @@ export async function cmdLink(args: string[], options?: LinkOptions): Promise<vo
 
   // ── Save to history ────────────────────────────────────────────────────────
   const record = {
-    id: generateSpawnId(),
+    id: generateAgentseaId(),
     agent: detectedAgent,
     cloud: detectedCloud,
     timestamp: new Date().toISOString(),
-    name: spawnName,
+    name: agentseaName,
     connection: {
       ip,
       user: sshUser,
@@ -425,9 +426,9 @@ export async function cmdLink(args: string[], options?: LinkOptions): Promise<vo
     },
   };
 
-  const saveResult = tryCatch(() => saveSpawnRecord(record));
+  const saveResult = tryCatch(() => saveAgentseaRecord(record));
   if (!saveResult.ok) {
-    p.log.error(`Failed to save deployment: ${getErrorMessage(saveResult.error)}`);
+    logError(`Failed to save deployment: ${getErrorMessage(saveResult.error)}`);
     process.exit(1);
   }
 
@@ -448,7 +449,7 @@ export async function cmdLink(args: string[], options?: LinkOptions): Promise<vo
         ...keyOpts,
         `${sshUser}@${ip}`,
       ];
-      const exitCode = spawnInteractive(sshArgs);
+      const exitCode = agentseaInteractive(sshArgs);
       if (exitCode !== 0) {
         p.log.warn(`SSH exited with code ${exitCode}. The server is still linked.`);
         p.log.info(`Try manually: ${pc.cyan(`ssh ${sshUser}@${ip}`)}`);
@@ -456,5 +457,5 @@ export async function cmdLink(args: string[], options?: LinkOptions): Promise<vo
     }
   }
 
-  p.outro(`Linked as ${spawnName}. Run ${pc.cyan(`${AGENTSEA_CLI} list`)} to manage it.`);
+  p.outro(`Linked as ${agentseaName}. Run ${pc.cyan(`${AGENTSEA_CLI} list`)} to manage it.`);
 }

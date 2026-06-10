@@ -13,7 +13,7 @@ import { AGENTSEA_CLI } from "../shared/cli-invocation.js";
 import { getPackagesForTier, cloudInitAptBootstrapLines, NODE_INSTALL_CMD, needsBun, needsNode } from "../shared/cloud-init.js";
 import { generateCsrfState, OAUTH_CSS } from "../shared/oauth.js";
 import { parseJsonObj } from "../shared/parse.js";
-import { getSpawnCloudConfigPath } from "../shared/paths.js";
+import { getAgentseaCloudConfigPath } from "../shared/paths.js";
 import {
   asyncTryCatch,
   asyncTryCatchIf,
@@ -33,12 +33,13 @@ import {
   scpQuietArgs,
   waitForSsh as sharedWaitForSsh,
   sleep,
-  spawnInteractive,
+  agentseaInteractive,
   validateRemotePath,
   waitForSshSnapshotBoot,
 } from "../shared/ssh.js";
-import { ensureSshKeys, getSpawnKey, getSshFingerprint, getSshKeyOpts, SPAWN_KEY_NAME } from "../shared/ssh-keys.js";
+import { ensureSshKeys, getAgentseaKey, getSshFingerprint, getSshKeyOpts, AGENTSEA_KEY_NAME } from "../shared/ssh-keys.js";
 import {
+  defaultCloudHostnameBase,
   dropletNameWithUuidSuffix,
   getServerNameFromEnv,
   loadApiToken,
@@ -54,14 +55,16 @@ import {
   openBrowser,
   prompt,
   retryOrQuit,
+  runWithSpinner,
   sanitizeTermValue,
   selectFromList,
   shellQuote,
   toKebabCase,
   validateRegionName,
   validateServerName,
+  type SpinnerHandle,
 } from "../shared/ui.js";
-import { isSpawnVerbose } from "../shared/verbosity.js";
+import { isAgentseaVerbose } from "../shared/verbosity.js";
 import { digitaloceanBilling } from "./billing.js";
 
 const DO_API_BASE = "https://api.digitalocean.com/v2";
@@ -105,7 +108,7 @@ const DO_CLIENT_ID = "c82b64ac5f9cd4d03b686bebf17546c603b9c368a296a8c4c0718b1f40
 const DO_CLIENT_SECRET =
   process.env["DO_CLIENT_SECRET"] ?? "8083ef0317481d802d15b68f1c0b545b726720dbf52d00d17f649cc794efdfd9";
 
-// Fine-grained scopes for spawn (minimum required)
+// Fine-grained scopes for agentsea (minimum required)
 const DO_SCOPES = [
   "account:read",
   "droplet:create",
@@ -120,8 +123,8 @@ const DO_SCOPES = [
   "tag:create",
 ].join(" ");
 
-/** Droplet tag for Spawn-sourced attribution (API name: letters, numbers, colons, dashes, underscores). */
-export const SPAWN_DIGITALOCEAN_ATTRIBUTION_TAG = "spawn";
+/** Droplet tag for Agentsea-sourced attribution (API name: letters, numbers, colons, dashes, underscores). */
+export const AGENTSEA_DIGITALOCEAN_ATTRIBUTION_TAG = "agentsea";
 
 const DO_OAUTH_CALLBACK_PORT = 5190;
 
@@ -269,13 +272,13 @@ async function doGetAll(endpoint: string, key: string): Promise<Record<string, u
 
 function loadConfig(): Record<string, unknown> | null {
   return unwrapOr(
-    tryCatchIf(isFileError, () => parseJsonObj(readFileSync(getSpawnCloudConfigPath("digitalocean"), "utf-8"))),
+    tryCatchIf(isFileError, () => parseJsonObj(readFileSync(getAgentseaCloudConfigPath("digitalocean"), "utf-8"))),
     null,
   );
 }
 
 async function saveConfig(values: Record<string, unknown>): Promise<void> {
-  const configPath = getSpawnCloudConfigPath("digitalocean");
+  const configPath = getAgentseaCloudConfigPath("digitalocean");
   const dir = dirname(configPath);
   mkdirSync(dir, {
     recursive: true,
@@ -417,13 +420,13 @@ export async function fetchDoAccountSnapshot(): Promise<DoAccountSnapshot | null
 }
 
 /**
- * True if the spawn-managed key is registered on the DO account.
+ * True if the agentsea-managed key is registered on the DO account.
  */
 export async function areSshKeysRegisteredOnDigitalOcean(): Promise<boolean> {
   if (!_state.token) {
     return false;
   }
-  const fingerprint = getSshFingerprint(getSpawnKey().pubPath);
+  const fingerprint = getSshFingerprint(getAgentseaKey().pubPath);
   if (!fingerprint) {
     return false;
   }
@@ -432,13 +435,13 @@ export async function areSshKeysRegisteredOnDigitalOcean(): Promise<boolean> {
 }
 
 /** Ensure attribution tag exists (ignore if already present or insufficient scope). */
-async function ensureSpawnAttributionTag(): Promise<void> {
+async function ensureAgentseaAttributionTag(): Promise<void> {
   await asyncTryCatch(() =>
     doApi(
       "POST",
       "/tags",
       JSON.stringify({
-        name: SPAWN_DIGITALOCEAN_ATTRIBUTION_TAG,
+        name: AGENTSEA_DIGITALOCEAN_ATTRIBUTION_TAG,
       }),
     ),
   );
@@ -486,7 +489,7 @@ async function getAccountInfo(): Promise<{
  * Returns true if the user switched accounts (caller should retry the operation).
  */
 export async function promptSwitchAccount(): Promise<boolean> {
-  if (process.env.SPAWN_NON_INTERACTIVE === "1") {
+  if (process.env.AGENTSEA_NON_INTERACTIVE === "1") {
     return false;
   }
 
@@ -574,7 +577,7 @@ export async function checkAccountStatus(): Promise<void> {
           const dropletNames = existingDroplets.data.map((d) => (isString(d.name) ? d.name : "unknown")).join(", ");
           const msg = `DigitalOcean droplet limit reached: ${currentCount}/${dropletLimit} droplets in use. Existing: [${dropletNames}]. Delete existing droplets at ${DO_DASHBOARD_URL} or request a limit increase at https://cloud.digitalocean.com/account/team/droplet_limit_increase`;
           logWarn(msg);
-          if (process.env.SPAWN_NON_INTERACTIVE === "1") {
+          if (process.env.AGENTSEA_NON_INTERACTIVE === "1") {
             throw new Error(msg);
           }
         } else if (dropletLimit - currentCount <= 2) {
@@ -782,7 +785,7 @@ async function tryDoOAuth(): Promise<string | null> {
     await sleep(500);
   }
 
-  if (!oauthCode && !oauthDenied && process.env.SPAWN_NON_INTERACTIVE === "1") {
+  if (!oauthCode && !oauthDenied && process.env.AGENTSEA_NON_INTERACTIVE === "1") {
     server.stop(true);
     logError("OAuth authentication timed out after 120 seconds");
     logError("Alternative: Use a manual API token instead");
@@ -1009,45 +1012,45 @@ export async function ensureDoToken(): Promise<boolean> {
 
 // ─── SSH Key Management ──────────────────────────────────────────────────────
 
-/** Register the spawn-managed key with DigitalOcean if not already present.
- * Only the spawn key is uploaded — the user's personal keys stay private. */
+/** Register the agentsea-managed key with DigitalOcean if not already present.
+ * Only the agentsea key is uploaded — the user's personal keys stay private. */
 export async function ensureSshKey(): Promise<void> {
-  const spawnKey = getSpawnKey();
-  const fingerprint = getSshFingerprint(spawnKey.pubPath);
+  const agentseaKey = getAgentseaKey();
+  const fingerprint = getSshFingerprint(agentseaKey.pubPath);
   if (!fingerprint) {
-    logWarn(`Could not determine fingerprint for SSH key '${spawnKey.name}'`);
+    logWarn(`Could not determine fingerprint for SSH key '${agentseaKey.name}'`);
     return;
   }
 
   const keys = await doGetAll("/account/keys", "ssh_keys");
   const found = keys.some((k) => k.fingerprint === fingerprint);
   if (found) {
-    logInfo(`SSH key '${spawnKey.name}' already registered with DigitalOcean`);
+    logInfo(`SSH key '${agentseaKey.name}' already registered with DigitalOcean`);
     return;
   }
 
-  logStep(`Registering SSH key '${spawnKey.name}' with DigitalOcean...`);
-  const pubKey = readFileSync(spawnKey.pubPath, "utf-8").trim();
+  logStep(`Registering SSH key '${agentseaKey.name}' with DigitalOcean...`);
+  const pubKey = readFileSync(agentseaKey.pubPath, "utf-8").trim();
   const body = JSON.stringify({
-    name: `spawn-${spawnKey.name}`,
+    name: `agentsea-${agentseaKey.name}`,
     public_key: pubKey,
   });
   const regResult = await asyncTryCatch(() => doApi("POST", "/account/keys", body));
   if (!regResult.ok) {
     const msg = getErrorMessage(regResult.error);
     if (msg.includes("already been taken") || msg.includes("already in use")) {
-      logInfo(`SSH key '${spawnKey.name}' already registered (under a different name)`);
+      logInfo(`SSH key '${agentseaKey.name}' already registered (under a different name)`);
       return;
     }
-    logWarn(`SSH key '${spawnKey.name}' registration may have failed, continuing...`);
+    logWarn(`SSH key '${agentseaKey.name}' registration may have failed, continuing...`);
     return;
   }
   const regData = parseJsonObj(regResult.data);
   if (regData?.ssh_key) {
-    logInfo(`SSH key '${spawnKey.name}' registered with DigitalOcean`);
+    logInfo(`SSH key '${agentseaKey.name}' registered with DigitalOcean`);
     return;
   }
-  logWarn(`SSH key '${spawnKey.name}' registration may have failed, continuing...`);
+  logWarn(`SSH key '${agentseaKey.name}' registration may have failed, continuing...`);
 }
 
 // ─── Droplet Size Options ────────────────────────────────────────────────────
@@ -1159,11 +1162,11 @@ export async function promptDropletSize(): Promise<string> {
     return process.env.DO_DROPLET_SIZE;
   }
 
-  if (process.env.SPAWN_CUSTOM !== "1") {
+  if (process.env.AGENTSEA_CUSTOM !== "1") {
     return DEFAULT_DROPLET_SIZE;
   }
 
-  if (process.env.SPAWN_NON_INTERACTIVE === "1") {
+  if (process.env.AGENTSEA_NON_INTERACTIVE === "1") {
     return DEFAULT_DROPLET_SIZE;
   }
 
@@ -1178,11 +1181,11 @@ export async function promptDoRegion(): Promise<string> {
     return process.env.DO_REGION;
   }
 
-  if (process.env.SPAWN_CUSTOM !== "1") {
+  if (process.env.AGENTSEA_CUSTOM !== "1") {
     return DEFAULT_DO_REGION;
   }
 
-  if (process.env.SPAWN_NON_INTERACTIVE === "1") {
+  if (process.env.AGENTSEA_NON_INTERACTIVE === "1") {
     return DEFAULT_DO_REGION;
   }
 
@@ -1240,20 +1243,19 @@ export async function createServer(
     : "ubuntu-24-04-x64";
   const imageLabel = imageOverride ?? "ubuntu-24-04-x64";
 
-  if (isSpawnVerbose()) {
-    logStep(
-      `Creating DigitalOcean droplet '${name}' (size: ${size}, region: ${effectiveRegion}, image: ${imageLabel})...`,
-    );
-  } else {
-    logAlwaysStep("Creating DigitalOcean droplet…");
-  }
+  const spinnerLabel = isAgentseaVerbose()
+    ? `Creating DigitalOcean droplet '${name}' (size: ${size}, region: ${effectiveRegion}, image: ${imageLabel})...`
+    : "Creating DigitalOcean droplet…";
 
-  // Attach only the spawn-managed key — user's other registered keys stay off
+  const createAndActivate = async (handle: SpinnerHandle): Promise<VMConnection> => {
+    handle.setDetail("preparing SSH keys");
+
+  // Attach only the agentsea-managed key — user's other registered keys stay off
   // the droplet (privacy + avoids sshd MaxAuthTries flood on the client side).
-  const spawnFingerprint = getSshFingerprint(getSpawnKey().pubPath);
-  const sshKeys: string[] = spawnFingerprint
+  const agentseaFingerprint = getSshFingerprint(getAgentseaKey().pubPath);
+  const sshKeys: string[] = agentseaFingerprint
     ? [
-        spawnFingerprint,
+        agentseaFingerprint,
       ]
     : [];
 
@@ -1272,9 +1274,10 @@ export async function createServer(
     dropletConfig.user_data = getCloudInitUserdata(tier);
   }
 
-  await ensureSpawnAttributionTag();
+  handle.setDetail("submitting create request");
+  await ensureAgentseaAttributionTag();
   dropletConfig.tags = [
-    SPAWN_DIGITALOCEAN_ATTRIBUTION_TAG,
+    AGENTSEA_DIGITALOCEAN_ATTRIBUTION_TAG,
   ];
 
   let body = JSON.stringify(dropletConfig);
@@ -1311,7 +1314,7 @@ export async function createServer(
         if (retryDroplet?.id) {
           _state.dropletId = String(retryDroplet.id);
           logInfo(`Droplet created: ID=${_state.dropletId}`);
-          await waitForDropletActive(_state.dropletId);
+          await waitForDropletActive(_state.dropletId, 60, handle);
           return {
             ip: _state.serverIp,
             user: "root",
@@ -1363,7 +1366,8 @@ export async function createServer(
   logInfo(`Droplet created: ID=${_state.dropletId}`);
 
   // Wait for droplet to become active and get IP
-  await waitForDropletActive(_state.dropletId);
+  handle.setDetail("waiting for active");
+  await waitForDropletActive(_state.dropletId, 60, handle);
 
   return {
     ip: _state.serverIp,
@@ -1372,9 +1376,22 @@ export async function createServer(
     server_name: name,
     cloud: "digitalocean",
   };
+  };
+
+  if (isAgentseaVerbose()) {
+    logStep(spinnerLabel);
+    return createAndActivate({ setDetail: () => {} });
+  }
+  return runWithSpinner(spinnerLabel, createAndActivate, {
+    doneMessage: "DigitalOcean droplet ready",
+  });
 }
 
-async function waitForDropletActive(dropletId: string, maxAttempts = 60): Promise<void> {
+async function waitForDropletActive(
+  dropletId: string,
+  maxAttempts = 60,
+  handle?: SpinnerHandle,
+): Promise<void> {
   logStep("Waiting for droplet to become active...");
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -1385,6 +1402,7 @@ async function waitForDropletActive(dropletId: string, maxAttempts = 60): Promis
       const msg = r.error instanceof Error ? r.error.message : String(r.error);
       if (msg.includes("404")) {
         // Transient — droplet not yet visible in the API, retry
+        handle?.setDetail(`propagating (${attempt}/${maxAttempts})`);
         logStepInline(`Droplet not yet visible (${attempt}/${maxAttempts})`);
         await sleep(5000);
         continue;
@@ -1412,7 +1430,9 @@ async function waitForDropletActive(dropletId: string, maxAttempts = 60): Promis
       throw new Error("Droplet activation timeout");
     }
 
-    logStepInline(`Droplet status: ${status || "unknown"} (${attempt}/${maxAttempts})`);
+    const statusLabel = status || "unknown";
+    handle?.setDetail(`${statusLabel} (${attempt}/${maxAttempts})`);
+    logStepInline(`Droplet status: ${statusLabel} (${attempt}/${maxAttempts})`);
     await sleep(5000);
   }
   logStepDone();
@@ -1420,10 +1440,10 @@ async function waitForDropletActive(dropletId: string, maxAttempts = 60): Promis
 
 // ─── Snapshot Lookup ─────────────────────────────────────────────────────────
 
-export async function findSpawnSnapshot(agentName: string): Promise<string | null> {
+export async function findAgentseaSnapshot(agentName: string): Promise<string | null> {
   const r = await asyncTryCatch(async () => {
     // DO snapshots don't support tags — filter by name prefix instead
-    const prefix = `spawn-${agentName}-`;
+    const prefix = `agentsea-${agentName}-`;
     const text = await doApi("GET", "/images?private=true&per_page=100", undefined, 1);
     const data = parseJsonObj(text);
     const allImages = toObjectArray(data?.images);
@@ -1470,7 +1490,7 @@ export async function waitForCloudInit(ip?: string, maxAttempts = 60): Promise<v
     extraSshOpts: keyOpts,
   });
 
-  if (!isSpawnVerbose()) {
+  if (!isAgentseaVerbose()) {
     await pollCloudInitComplete({
       host: serverIp,
       user: "root",
@@ -1687,7 +1707,7 @@ export async function interactiveSession(cmd: string, ip?: string): Promise<numb
   const fullCmd = `export TERM='${term}' LANG='C.UTF-8' PATH="$HOME/.npm-global/bin:$HOME/.claude/local/bin:$HOME/.local/bin:$HOME/.bun/bin:$PATH" && exec bash -l -c ${shellQuote(cmd)}`;
   const keyOpts = getSshKeyOpts(await ensureSshKeys());
 
-  const exitCode = spawnInteractive([
+  const exitCode = agentseaInteractive([
     "ssh",
     ...SSH_INTERACTIVE_OPTS,
     ...keyOpts,
@@ -1707,7 +1727,7 @@ export async function interactiveSession(cmd: string, ip?: string): Promise<numb
   logAlwaysInfo(`  ${AGENTSEA_CLI} delete`);
   logAlwaysInfo("To reconnect:");
   logAlwaysInfo(`  ${AGENTSEA_CLI} last`);
-  logAlwaysInfo(`  or: ssh -i ~/.ssh/${SPAWN_KEY_NAME} root@${serverIp}`);
+  logAlwaysInfo(`  or: ssh -i ~/.ssh/${AGENTSEA_KEY_NAME} root@${serverIp}`);
 
   return exitCode;
 }
@@ -1718,20 +1738,23 @@ export async function getServerName(): Promise<string> {
   return getServerNameFromEnv("DO_DROPLET_NAME");
 }
 
-export async function promptSpawnName(): Promise<void> {
+export async function promptAgentseaName(): Promise<void> {
   /** Every DO droplet hostname is `<kebab-base>-<uuid>` except when `DO_DROPLET_NAME` pins an exact label (e2e/headless). */
   const finalize = (baseInput: string): void => {
-    const final = dropletNameWithUuidSuffix(baseInput.trim() || "spawn");
-    process.env.SPAWN_NAME_DISPLAY = final;
-    process.env.SPAWN_NAME_KEBAB = final;
+    const agentSlug = process.env.AGENTSEA_AGENT_SLUG?.trim();
+    const final = dropletNameWithUuidSuffix(
+      baseInput.trim() || defaultCloudHostnameBase(agentSlug || undefined),
+    );
+    process.env.AGENTSEA_NAME_DISPLAY = final;
+    process.env.AGENTSEA_NAME_KEBAB = final;
     logInfo(`Using droplet name: ${final}`);
   };
 
   if (process.env.DO_DROPLET_NAME) {
     const name = process.env.DO_DROPLET_NAME.trim();
     if (validateServerName(name)) {
-      process.env.SPAWN_NAME_DISPLAY = name;
-      process.env.SPAWN_NAME_KEBAB = name;
+      process.env.AGENTSEA_NAME_DISPLAY = name;
+      process.env.AGENTSEA_NAME_KEBAB = name;
       logInfo(`Using resource name: ${name}`);
       return;
     }
@@ -1740,19 +1763,23 @@ export async function promptSpawnName(): Promise<void> {
 
   let baseForSuffix: string | undefined;
 
-  if (process.env.SPAWN_NAME_KEBAB?.trim()) {
-    baseForSuffix = process.env.SPAWN_NAME_KEBAB.trim();
-  } else if (process.env.SPAWN_NON_INTERACTIVE === "1") {
-    baseForSuffix = (process.env.SPAWN_NAME ? toKebabCase(process.env.SPAWN_NAME) : "").trim() || "spawn";
+  if (process.env.AGENTSEA_NAME_KEBAB?.trim()) {
+    baseForSuffix = process.env.AGENTSEA_NAME_KEBAB.trim();
+  } else if (process.env.AGENTSEA_NON_INTERACTIVE === "1") {
+    const agentSlug = process.env.AGENTSEA_AGENT_SLUG?.trim();
+    baseForSuffix =
+      (process.env.AGENTSEA_NAME ? toKebabCase(process.env.AGENTSEA_NAME) : "").trim() ||
+      defaultCloudHostnameBase(agentSlug || undefined);
   } else {
-    const derived = process.env.SPAWN_NAME ? toKebabCase(process.env.SPAWN_NAME) : "";
-    const fallback = derived || "spawn";
+    const agentSlug = process.env.AGENTSEA_AGENT_SLUG?.trim();
+    const derived = process.env.AGENTSEA_NAME ? toKebabCase(process.env.AGENTSEA_NAME) : "";
+    const fallback = derived || defaultCloudHostnameBase(agentSlug || undefined);
     process.stderr.write("\n");
     const answer = await prompt(`DigitalOcean droplet label [${fallback}]: `);
-    baseForSuffix = toKebabCase((answer || "").trim() || fallback) || "spawn";
+    baseForSuffix = toKebabCase((answer || "").trim() || fallback) || defaultCloudHostnameBase(agentSlug || undefined);
   }
 
-  finalize(baseForSuffix ?? "spawn");
+  finalize(baseForSuffix ?? defaultCloudHostnameBase(process.env.AGENTSEA_AGENT_SLUG?.trim() || undefined));
 }
 
 // ─── Lifecycle ───────────────────────────────────────────────────────────────
@@ -1800,13 +1827,13 @@ export interface AgentSeaDropletRef {
   createdAt: string;
 }
 
-/** Droplets tagged with AgentSea attribution (`spawn`). */
+/** Droplets tagged with AgentSea attribution (`agentsea`). */
 export async function listAgentSeaDroplets(): Promise<AgentSeaDropletRef[]> {
   const droplets = await doGetAll("/droplets", "droplets");
   const results: AgentSeaDropletRef[] = [];
   for (const d of droplets) {
     const tags = d.tags;
-    if (!Array.isArray(tags) || !tags.includes(SPAWN_DIGITALOCEAN_ATTRIBUTION_TAG)) {
+    if (!Array.isArray(tags) || !tags.includes(AGENTSEA_DIGITALOCEAN_ATTRIBUTION_TAG)) {
       continue;
     }
     const id = d.id != null ? String(d.id) : "";

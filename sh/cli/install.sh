@@ -3,17 +3,29 @@
 #
 # Usage:
 #   curl -fsSL --proto '=https' https://spawn.thegrid.ai/cli/install.sh | bash
+#   curl -fsSL --proto '=https' https://spawn.thegrid.ai/cli/install.sh | bash -s -- openclaw digitalocean
 #
 # This installs agentsea via bun. If bun is not available, it auto-installs it first.
+# With agent and cloud arguments, installs then runs `agentsea <agent> <cloud>` interactively.
 #
 # Override install directory:
-#   SPAWN_INSTALL_DIR=/usr/local/bin curl -fsSL --proto '=https' ... | bash
+#   AGENTSEA_INSTALL_DIR=/usr/local/bin curl -fsSL --proto '=https' ... | bash
 
 set -eo pipefail
 
-SPAWN_REPO="Spectral-Finance/agentsea"
-SPAWN_CDN="https://spawn.thegrid.ai"
-SPAWN_RAW_BASE="https://raw.githubusercontent.com/${SPAWN_REPO}/main"
+# Optional launch target when invoked as: curl ... | bash -s -- <agent> <cloud>
+AGENTSEA_LAUNCH_AGENT="${1:-}"
+AGENTSEA_LAUNCH_CLOUD="${2:-}"
+INSTALL_DIR=""
+
+AGENTSEA_REPO="Spectral-Finance/agentsea"
+# Origin this installer + the agentsea CLI fetch scripts from. Per-environment
+# deploys (dev/staging/prod) replace AGENTSEA_CDN_DEFAULT below at build time via
+# packages/ui/scripts/sync-cdn-public.sh (from NEXT_PUBLIC_AGENTSEA_PUBLIC_ORIGIN).
+# Users can override at runtime by exporting AGENTSEA_CDN before running this.
+AGENTSEA_CDN_DEFAULT="https://agentsea.dev.thegrid.ai"
+AGENTSEA_CDN="${AGENTSEA_CDN:-$AGENTSEA_CDN_DEFAULT}"
+AGENTSEA_RAW_BASE="https://raw.githubusercontent.com/${AGENTSEA_REPO}/main"
 MIN_BUN_VERSION="1.2.0"
 BUN_INSTALL_VERSION="1.3.9"
 # SHA-256 of https://bun.sh/install?version=1.3.9 — update when bumping BUN_INSTALL_VERSION
@@ -77,7 +89,7 @@ ensure_min_bun_version() {
             echo "  bun upgrade"
             echo ""
             echo "Then re-run:"
-            echo "  curl -fsSL --proto '=https' ${SPAWN_CDN}/cli/install.sh | bash"
+            echo "  curl -fsSL --proto '=https' ${AGENTSEA_CDN}/cli/install.sh | bash"
             exit 1
         fi
         log_info "bun upgraded to ${current}"
@@ -161,7 +173,7 @@ safe_ln_sf() {
 # to /usr/local/bin for immediate availability (without prompting for a
 # password — only if writable or passwordless sudo is available).
 # Also patches shell rc files so both ~/.local/bin and ~/.bun/bin are in
-# PATH for future sessions (bun is required by spawn's shebang).
+# PATH for future sessions (bun is required by agentsea's shebang).
 ensure_in_path() {
     local install_dir="$1"
     local bun_bin_dir="${BUN_INSTALL}/bin"
@@ -169,10 +181,10 @@ ensure_in_path() {
     # 1. Check if install_dir and bun are already in the user's real PATH
     local agentsea_in_path=false
     local bun_in_path=false
-    if echo "${_SPAWN_ORIG_PATH}" | tr ':' '\n' | grep -qxF "${install_dir}"; then
+    if echo "${_AGENTSEA_ORIG_PATH}" | tr ':' '\n' | grep -qxF "${install_dir}"; then
         agentsea_in_path=true
     fi
-    if echo "${_SPAWN_ORIG_PATH}" | tr ':' '\n' | grep -qxF "${bun_bin_dir}"; then
+    if echo "${_AGENTSEA_ORIG_PATH}" | tr ':' '\n' | grep -qxF "${bun_bin_dir}"; then
         bun_in_path=true
     fi
 
@@ -262,7 +274,7 @@ ensure_in_path() {
 
     # 4. Show version and success message
     echo ""
-    SPAWN_NO_UPDATE_CHECK=1 PATH="${install_dir}:${PATH}" "${install_dir}/agentsea" version
+    AGENTSEA_NO_UPDATE_CHECK=1 PATH="${install_dir}:${PATH}" "${install_dir}/agentsea" version
     echo ""
     local all_ready=true
     if [ "$agentsea_in_path" = false ] && [ "$linked" = false ]; then
@@ -274,11 +286,54 @@ ensure_in_path() {
     if [ "$all_ready" = true ]; then
         printf '%b[agentsea]%b Run %bagentsea%b to get started\n' "$GREEN" "$NC" "$BOLD" "$NC"
     else
-        printf '%b[agentsea]%b To start using agentsea, run:\n' "$GREEN" "$NC"
+        printf '%b[agentsea]%b Add agentsea to your PATH for this session:\n' "$GREEN" "$NC"
         echo ""
-        echo "    exec \$SHELL"
+        echo "    export PATH=\"\$HOME/.local/bin:\$PATH\""
+        echo ""
+        echo "  Or reopen your terminal if ~/.bashrc / ~/.zshrc was updated."
         echo ""
     fi
+}
+
+# --- Helper: validate agent/cloud slugs before auto-launch ---
+validate_launch_slug() {
+    local label="$1"
+    local value="$2"
+    if ! [[ "$value" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+        log_error "Invalid ${label}: ${value}"
+        echo "Use lowercase letters, digits, and hyphens only (e.g. hermes, local)."
+        exit 1
+    fi
+}
+
+launch_agentsea_if_requested() {
+    if [ -z "${AGENTSEA_LAUNCH_AGENT}" ] && [ -z "${AGENTSEA_LAUNCH_CLOUD}" ]; then
+        return 0
+    fi
+    if [ -z "${AGENTSEA_LAUNCH_AGENT}" ] || [ -z "${AGENTSEA_LAUNCH_CLOUD}" ]; then
+        log_error "Both agent and cloud are required to auto-launch after install"
+        echo "Example: curl -fsSL .../install.sh | bash -s -- hermes local"
+        exit 1
+    fi
+    validate_launch_slug "agent" "${AGENTSEA_LAUNCH_AGENT}"
+    validate_launch_slug "cloud" "${AGENTSEA_LAUNCH_CLOUD}"
+
+    local bin="${INSTALL_DIR}/agentsea"
+    if [ ! -x "$bin" ]; then
+        log_error "agentsea binary not found at ${bin}"
+        exit 1
+    fi
+
+    echo ""
+    log_step "Install complete — starting agentsea ${AGENTSEA_LAUNCH_AGENT} ${AGENTSEA_LAUNCH_CLOUD}..."
+    echo ""
+    export PATH="${INSTALL_DIR}:${BUN_INSTALL}/bin:${HOME}/.local/bin:/usr/local/bin:${PATH}"
+    # curl | bash pipes the script on stdin; after install, reattach the user's TTY
+    # so agentsea can prompt for DigitalOcean / Grid API keys interactively.
+    if [ -r /dev/tty ]; then
+        exec 0</dev/tty
+    fi
+    AGENTSEA_NO_UPDATE_CHECK=1 exec "${bin}" "${AGENTSEA_LAUNCH_AGENT}" "${AGENTSEA_LAUNCH_CLOUD}"
 }
 
 # --- Helper: build and install the CLI using bun ---
@@ -288,22 +343,22 @@ build_and_install() {
     trap '[ -n "${tmpdir}" ] && [ -d "${tmpdir}" ] && rm -rf "${tmpdir}"' EXIT
 
     log_step "Downloading pre-built CLI binary..."
-    curl -fsSL --proto '=https' "https://github.com/${SPAWN_REPO}/releases/download/cli-latest/cli.js" -o "${tmpdir}/cli.js"
+    curl -fsSL --proto '=https' "https://github.com/${AGENTSEA_REPO}/releases/download/cli-latest/cli.js" -o "${tmpdir}/cli.js"
     if [ ! -s "${tmpdir}/cli.js" ]; then
         log_error "Failed to download pre-built binary"
         exit 1
     fi
 
-    if [ -n "${SPAWN_INSTALL_DIR:-}" ]; then
-        case "${SPAWN_INSTALL_DIR}" in
+    if [ -n "${AGENTSEA_INSTALL_DIR:-}" ]; then
+        case "${AGENTSEA_INSTALL_DIR}" in
             /*) ;;  # absolute path OK
-            *) log_error "SPAWN_INSTALL_DIR must be an absolute path"; exit 1 ;;
+            *) log_error "AGENTSEA_INSTALL_DIR must be an absolute path"; exit 1 ;;
         esac
-        case "${SPAWN_INSTALL_DIR}" in
-            *..*) log_error "SPAWN_INSTALL_DIR must not contain .. path components"; exit 1 ;;
+        case "${AGENTSEA_INSTALL_DIR}" in
+            *..*) log_error "AGENTSEA_INSTALL_DIR must not contain .. path components"; exit 1 ;;
         esac
     fi
-    INSTALL_DIR="${SPAWN_INSTALL_DIR:-${HOME}/.local/bin}"
+    INSTALL_DIR="${AGENTSEA_INSTALL_DIR:-${HOME}/.local/bin}"
     mkdir -p "${INSTALL_DIR}"
     cp "${tmpdir}/cli.js" "${INSTALL_DIR}/agentsea"
     chmod +x "${INSTALL_DIR}/agentsea"
@@ -315,7 +370,7 @@ build_and_install() {
 # --- Locate or install bun ---
 # Save original PATH before modifications so ensure_in_path() can check
 # whether the install dir is already in the user's real PATH.
-_SPAWN_ORIG_PATH="${PATH}"
+_AGENTSEA_ORIG_PATH="${PATH}"
 # When running via `curl | bash`, subshells may not inherit PATH updates,
 # so we always prepend the standard bun install locations explicitly.
 export BUN_INSTALL="${BUN_INSTALL:-${HOME}/.bun}"
@@ -345,7 +400,7 @@ if ! bun --version &>/dev/null; then
         echo "This could indicate a compromised CDN or DNS hijack."
         echo ""
         echo "If bun has released a new installer, please report this at:"
-        echo "  https://github.com/${SPAWN_REPO}/issues"
+        echo "  https://github.com/${AGENTSEA_REPO}/issues"
         exit 1
     fi
     bash "$_bun_installer"
@@ -363,7 +418,7 @@ if ! bun --version &>/dev/null; then
         echo "  curl -fsSL --proto '=https' https://bun.sh/install?version=${BUN_INSTALL_VERSION} | bash"
         echo ""
         echo "Then reopen your terminal and re-run:"
-        echo "  curl -fsSL --proto '=https' ${SPAWN_CDN}/cli/install.sh | bash"
+        echo "  curl -fsSL --proto '=https' ${AGENTSEA_CDN}/cli/install.sh | bash"
         exit 1
     fi
 
@@ -375,18 +430,28 @@ ensure_min_bun_version
 log_step "Installing agentsea via bun..."
 build_and_install
 
-# Persist install referrer (e.g. SPAWN_REF=reddit) so the CLI can report
+# Pin the CDN origin this CLI was installed from so `agentsea` fetches scripts and
+# one-liners from the same environment (dev/staging/prod) without needing
+# AGENTSEA_CDN exported. The CLI reads this file (env var still takes precedence).
+_cdn_dir="${AGENTSEA_HOME:-${HOME}/.config/agentsea}"
+if mkdir -p "${_cdn_dir}" 2>/dev/null; then
+    printf '%s\n' "${AGENTSEA_CDN}" > "${_cdn_dir}/cdn-origin" 2>/dev/null || true
+fi
+
+# Persist install referrer (e.g. AGENTSEA_REF=reddit) so the CLI can report
 # attribution on first run. Only written once — never overwritten on updates.
-if [ -n "${SPAWN_REF:-}" ]; then
+if [ -n "${AGENTSEA_REF:-}" ]; then
     _ref_dir="${HOME}/.config/agentsea"
     _ref_file="${_ref_dir}/.ref"
     if [ ! -f "${_ref_file}" ]; then
         mkdir -p "${_ref_dir}"
         # Sanitize: allow only alphanumeric, hyphens, underscores (no injection)
-        _clean_ref=$(printf '%s' "${SPAWN_REF}" | tr -cd 'a-zA-Z0-9_-' | head -c 32)
+        _clean_ref=$(printf '%s' "${AGENTSEA_REF}" | tr -cd 'a-zA-Z0-9_-' | head -c 32)
         if [ -n "${_clean_ref}" ]; then
             printf '%s' "${_clean_ref}" > "${_ref_file}"
             log_info "Install referrer: ${_clean_ref}"
         fi
     fi
 fi
+
+launch_agentsea_if_requested

@@ -6,10 +6,8 @@ export const AGENTSEA_PUBLIC_ORIGIN_UNSET = "https://next-public-agentsea-public
 
 function agentSeaPublicOrigin(): string {
   const raw =
-    typeof process !== "undefined" &&
-    (process.env.NEXT_PUBLIC_AGENTSEA_PUBLIC_ORIGIN || process.env.NEXT_PUBLIC_GRID_SPAWN_PUBLIC_ORIGIN)
-      ? (process.env.NEXT_PUBLIC_AGENTSEA_PUBLIC_ORIGIN ?? process.env.NEXT_PUBLIC_GRID_SPAWN_PUBLIC_ORIGIN ?? "")
-          .trim()
+    typeof process !== "undefined" && process.env.NEXT_PUBLIC_AGENTSEA_PUBLIC_ORIGIN
+      ? process.env.NEXT_PUBLIC_AGENTSEA_PUBLIC_ORIGIN.trim()
       : "";
   if (!raw) {
     return AGENTSEA_PUBLIC_ORIGIN_UNSET;
@@ -24,10 +22,7 @@ export const isAgentSeaCdnConfigured = AGENTSEA_PUBLIC_ORIGIN !== AGENTSEA_PUBLI
 
 export const AGENTSEA_INSTALL_URL = `${AGENTSEA_PUBLIC_ORIGIN}/install.sh`;
 
-/** One-liner bootstrap example (DigitalOcean × OpenClaw). */
-export const AGENTSEA_OPENCLAW_DO_ONELINER = `${AGENTSEA_PUBLIC_ORIGIN}/digitalocean/openclaw.sh`;
-
-/** Websocket placeholder base (spawn detail, etc.). */
+/** Websocket placeholder base (agentsea detail, etc.). */
 export function agentSeaWsOrigin(): string {
   return AGENTSEA_PUBLIC_ORIGIN.replace(/^http/, "ws");
 }
@@ -43,17 +38,16 @@ export const THEGRID_API_KEY_ENV_VAR = "THEGRID_API_KEY";
 /** Where users create Grid API keys in the dashboard (adjust path when canonical). */
 export const THEGRID_API_KEYS_DASHBOARD_ORIGIN = "https://app.thegrid.ai";
 
-/** Agents with end-to-end Grid chat verified on DigitalOcean (provision → configure → LLM). */
+/**
+ * Homepage agents only. Junie/Pi/Cursor/Codex/T3 are disabled in manifest until tool E2E passes.
+ * Hermes is included — provision/configure verified; automated input test skipped (TUI-only).
+ */
 export const CHAT_VERIFIED_AGENT_SLUGS = [
-  "claude",
-  "cursor",
   "openclaw",
-  "codex",
-  "opencode",
-  "kilocode",
   "hermes",
-  "junie",
-  "pi",
+  "kilocode",
+  "claude",
+  "opencode",
 ] as const;
 
 export type ChatVerifiedAgentSlug = (typeof CHAT_VERIFIED_AGENT_SLUGS)[number];

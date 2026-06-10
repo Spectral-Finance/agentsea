@@ -1,6 +1,12 @@
 {
   "rewrites": [
-    { "source": "/install.sh", "destination": "/sh/cli/install.sh" }
+    { "source": "/install.sh", "destination": "/sh/cli/install.sh" },
+    { "source": "/cli/:file", "destination": "/sh/cli/:file" },
+    { "source": "/shared/:file", "destination": "/sh/shared/:file" },
+    {
+      "source": "/:cloud(local|digitalocean|gcp|aws|hetzner|daytona|sprite)/:script",
+      "destination": "/sh/:cloud/:script"
+    }
   ],
   "headers": [
     {
