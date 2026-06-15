@@ -5,7 +5,7 @@ import type { CloudOrchestrator } from "../shared/orchestrate.js";
 import * as p from "@clack/prompts";
 import { createCloudAgentsFromModules } from "../shared/agent-module-registry.js";
 import { makeDockerRunner, runOrchestration } from "../shared/orchestrate.js";
-import { logWarn } from "../shared/ui.js";
+import { logWarn, prepareStdinForClack } from "../shared/ui.js";
 import { resolveAgent } from "./agents.js";
 import {
   cleanupContainer,
@@ -51,6 +51,9 @@ export async function runLocalAgent(agentName: string): Promise<void> {
     logWarn("   The agent will have full access to your filesystem, shell, and network.");
     logWarn("   For isolation, consider running on a cloud VM instead.\n");
 
+    // Ensure stdin is resumed/cooked before this raw-mode prompt — preceding
+    // spinners/log output can leave it unable to receive keys (Ctrl-C dead).
+    prepareStdinForClack();
     const confirmed = await p.confirm({
       message: "Continue with local installation?",
       initialValue: true,
