@@ -1010,6 +1010,9 @@ export async function startGateway(runner: CloudRunner): Promise<void> {
     "#!/bin/bash",
     'source "$HOME/.agentsearc" 2>/dev/null',
     'export PATH="$HOME/.npm-global/bin:$HOME/.bun/bin:$HOME/.local/bin:$PATH"',
+    // Repair any config-schema drift (e.g. channels.telegram.streaming string→object
+    // across openclaw versions) before the gateway validates it, or it crash-loops.
+    "command -v openclaw >/dev/null 2>&1 && openclaw doctor --fix >> /tmp/openclaw-gateway.log 2>&1 || true",
     "while true; do",
     "  openclaw gateway",
     '  echo "openclaw gateway exited, restarting in 5s" >> /tmp/openclaw-gateway.log',
@@ -1052,6 +1055,9 @@ export async function startGateway(runner: CloudRunner): Promise<void> {
   const script = [
     "source ~/.agentsearc 2>/dev/null",
     "export PATH=$HOME/.npm-global/bin:$HOME/.bun/bin:$HOME/.local/bin:$PATH",
+    // Normalize the openclaw config (migrate any stale schema, e.g.
+    // channels.telegram.streaming) so the gateway passes validation on first start.
+    "command -v openclaw >/dev/null 2>&1 && openclaw doctor --fix >/dev/null 2>&1 || true",
     "printf '%s' '" + wrapperB64 + "' | base64 -d > /tmp/openclaw-gateway-wrapper.tmp",
     "chmod +x /tmp/openclaw-gateway-wrapper.tmp",
     "if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then",
@@ -1070,7 +1076,10 @@ export async function startGateway(runner: CloudRunner): Promise<void> {
     "else",
     "  mv /tmp/openclaw-gateway-wrapper.tmp /tmp/openclaw-gateway-wrapper",
     "  # Always restart — marketplace images often leave an old gateway on :18789 with stale config",
-    `  command -v fuser >/dev/null 2>&1 && fuser -k 18789/tcp 2>/dev/null || true`,
+    "  # Free the port cross-platform: lsof works on macOS+Linux; fuser is Linux-only",
+    "  # (macOS fuser lacks -k/PORT/tcp and would just print usage).",
+    `  if command -v lsof >/dev/null 2>&1; then _p=$(lsof -ti tcp:18789 2>/dev/null); [ -n "$_p" ] && kill $_p 2>/dev/null || true;`,
+    `  elif command -v fuser >/dev/null 2>&1; then fuser -k 18789/tcp 2>/dev/null || true; fi`,
     "  pkill -f '[o]penclaw gateway' 2>/dev/null || true",
     "  sleep 2",
     "  if command -v setsid >/dev/null 2>&1; then setsid /tmp/openclaw-gateway-wrapper > /tmp/openclaw-gateway.log 2>&1 < /dev/null &",
