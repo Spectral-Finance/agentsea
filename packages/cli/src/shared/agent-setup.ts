@@ -1018,7 +1018,8 @@ export async function startGateway(runner: CloudRunner): Promise<void> {
     'export PATH="$HOME/.npm-global/bin:$HOME/.bun/bin:$HOME/.local/bin:$PATH"',
     // Repair any config-schema drift (e.g. channels.telegram.streaming string→object
     // across openclaw versions) before the gateway validates it, or it crash-loops.
-    "command -v openclaw >/dev/null 2>&1 && openclaw doctor --fix >> /tmp/openclaw-gateway.log 2>&1 || true",
+    // stdin from /dev/null so `doctor --fix` never blocks on an interactive prompt.
+    "command -v openclaw >/dev/null 2>&1 && openclaw doctor --fix </dev/null >> /tmp/openclaw-gateway.log 2>&1 || true",
     "while true; do",
     "  openclaw gateway",
     '  echo "openclaw gateway exited, restarting in 5s" >> /tmp/openclaw-gateway.log',
@@ -1063,7 +1064,9 @@ export async function startGateway(runner: CloudRunner): Promise<void> {
     "export PATH=$HOME/.npm-global/bin:$HOME/.bun/bin:$HOME/.local/bin:$PATH",
     // Normalize the openclaw config (migrate any stale schema, e.g.
     // channels.telegram.streaming) so the gateway passes validation on first start.
-    "command -v openclaw >/dev/null 2>&1 && openclaw doctor --fix >/dev/null 2>&1 || true",
+    // Redirect stdin from /dev/null — `doctor --fix` blocks on an interactive prompt
+    // when stdin is a TTY, which hung the whole provision at "OpenClaw configured".
+    "command -v openclaw >/dev/null 2>&1 && openclaw doctor --fix </dev/null >/dev/null 2>&1 || true",
     "printf '%s' '" + wrapperB64 + "' | base64 -d > /tmp/openclaw-gateway-wrapper.tmp",
     "chmod +x /tmp/openclaw-gateway-wrapper.tmp",
     "if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then",
