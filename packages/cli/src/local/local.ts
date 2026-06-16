@@ -160,15 +160,51 @@ export function downloadFile(remotePath: string, localPath: string): void {
 
 // ─── Interactive Session ─────────────────────────────────────────────────────
 
-/** Launch an interactive shell session locally. */
+/** Single-quote a string for safe use inside a shell command (Linux `script -c`). */
+function shSingleQuote(s: string): string {
+  return `'${s.replace(/'/g, `'\\''`)}'`;
+}
+
+/** Whether the `script` utility is available to allocate a PTY. */
+function hasScriptUtil(): boolean {
+  const r = tryCatch(() =>
+    Bun.spawnSync(["sh", "-c", "command -v script >/dev/null 2>&1"], {
+      stdio: ["ignore", "ignore", "ignore"],
+    }),
+  );
+  return r.ok && r.data.exitCode === 0;
+}
+
+/**
+ * Wrap a launch argv so the agent runs inside its OWN pseudo-terminal via `script`.
+ *
+ * OpenTUI-based agents (OpenCode, Kilo Code) only accept keyboard input when they
+ * own a controlling PTY. Remotely that's provided by `ssh -tt`; locally they were
+ * launched as a child sharing the CLI's terminal, so input and Ctrl-C were dead on
+ * macOS. `script` gives them a fresh PTY (verified: input works wrapped, dead
+ * unwrapped). Returns null when `script` is unavailable so the caller falls back.
+ */
+function ptyWrapArgv(argv: string[]): string[] | null {
+  if (!hasScriptUtil()) {
+    return null;
+  }
+  if (process.platform === "darwin") {
+    // BSD script: `script -q /dev/null cmd args…` (returns the child's exit status).
+    return ["script", "-q", "/dev/null", ...argv];
+  }
+  if (process.platform === "linux") {
+    // util-linux script: `script -q -e -c "<command>" /dev/null` (-e: child exit code).
+    return ["script", "-q", "-e", "-c", argv.map(shSingleQuote).join(" "), "/dev/null"];
+  }
+  return null;
+}
+
+/** Launch an interactive shell session locally (inside a PTY so TUIs get input). */
 export async function interactiveSession(cmd: string): Promise<number> {
   validateCommand(cmd);
   const [shell, flag] = getLocalShell();
-  return agentseaInteractive([
-    shell,
-    flag,
-    cmd,
-  ]);
+  const direct = [shell, flag, cmd];
+  return agentseaInteractive(ptyWrapArgv(direct) ?? direct);
 }
 
 // ─── Docker Sandbox ─────────────────────────────────────────────────────────
