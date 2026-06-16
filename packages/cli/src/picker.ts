@@ -287,6 +287,20 @@ export function pickToTTYWithActions(config: PickConfig): PickResult {
     index: -1,
   };
 
+  // Non-interactive (headless/CI/tests): never block on a /dev/tty read — pick the
+  // default. Callers that must prompt are interactive; this only guards the case
+  // where no human is present to answer (which otherwise hangs on readSync).
+  if (process.env.AGENTSEA_NON_INTERACTIVE === "1") {
+    const idx = config.defaultValue ? config.options.findIndex((o) => o.value === config.defaultValue) : -1;
+    return config.defaultValue
+      ? {
+          action: "select",
+          value: config.defaultValue,
+          index: idx >= 0 ? idx : 0,
+        }
+      : cancel;
+  }
+
   if (config.options.length === 0) {
     return config.defaultValue
       ? {
