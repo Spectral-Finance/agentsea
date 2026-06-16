@@ -882,8 +882,49 @@ async function dispatchCommand(
       return;
     }
     // Optional positional argument: agentsea fix [agentsea-id]
-    const agentseaId = filteredArgs[1] && !filteredArgs[1].startsWith("-") ? filteredArgs[1] : undefined;
-    await cmdFix(agentseaId);
+    // Bulk repair: agentsea fix --all [--agent <agent>]
+    const args = filteredArgs.slice(1);
+    const positionals: string[] = [];
+    let all = false;
+    let agentFilter: string | undefined;
+    for (let i = 0; i < args.length; i += 1) {
+      const arg = args[i];
+      if (arg === "--all") {
+        all = true;
+        continue;
+      }
+      if (arg === "--agent") {
+        const next = args[i + 1];
+        if (!next || next.startsWith("-")) {
+          throw new Error("agentsea fix --agent requires an agent slug.");
+        }
+        agentFilter = next;
+        i += 1;
+        continue;
+      }
+      if (arg.startsWith("--agent=")) {
+        agentFilter = arg.slice("--agent=".length);
+        if (!agentFilter) {
+          throw new Error("agentsea fix --agent requires an agent slug.");
+        }
+        continue;
+      }
+      if (!arg.startsWith("-")) {
+        positionals.push(arg);
+        continue;
+      }
+      throw new Error(`Unknown fix option: ${arg}`);
+    }
+    if (agentFilter && !all) {
+      throw new Error("agentsea fix --agent requires --all.");
+    }
+    if (positionals.length > 1) {
+      throw new Error("agentsea fix accepts at most one agentsea name/ID.");
+    }
+    await cmdFix(positionals[0], {
+      all,
+      agent: agentFilter,
+    });
     return;
   }
   if (STATUS_COMMANDS.has(cmd)) {

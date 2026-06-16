@@ -1,5 +1,6 @@
 import type { VMConnection } from "../history.js";
 import type { Manifest } from "../manifest.js";
+import type { CloudRunner } from "../shared/agent-setup.js";
 import type { SshTunnelHandle } from "../shared/ssh.js";
 
 import * as p from "@clack/prompts";
@@ -14,10 +15,11 @@ import {
   validateUsername,
 } from "../security.js";
 import { getHistoryPath } from "../shared/paths.js";
-import { asyncTryCatchIf, isOperationalError, tryCatch } from "../shared/result.js";
+import { asyncTryCatch, asyncTryCatchIf, isOperationalError, tryCatch } from "../shared/result.js";
 import { SSH_BASE_OPTS, SSH_INTERACTIVE_OPTS, agentseaInteractive, startSshTunnel } from "../shared/ssh.js";
 import { ensureSshKeys, getSshKeyOpts } from "../shared/ssh-keys.js";
 import { AGENTSEA_CLI } from "../shared/cli-invocation.js";
+import { createCloudAgentsFromModules } from "../shared/agent-module-registry.js";
 import {
   issueT3PairingBrowserUrl,
   logT3PairingHandoff,
@@ -26,8 +28,19 @@ import {
   T3_REMOTE_PORT,
 } from "../shared/t3-config.js";
 import { buildHermesDashboardStartScript } from "../shared/hermes-dashboard.js";
-import { logError, logWarn, openBrowser, rewriteLocalhostHttpUrlForWindowsBrowserFromWsl, shellQuote } from "../shared/ui.js";
+import { makeSshRunner } from "../shared/ssh-runner.js";
+import {
+  logError,
+  logWarn,
+  openBrowser,
+  rewriteLocalhostHttpUrlForWindowsBrowserFromWsl,
+  shellQuote,
+} from "../shared/ui.js";
 import { getErrorMessage } from "./shared.js";
+
+export interface OpenClawReconnectPreflightOptions {
+  makeRunner?: (ip: string, user: string, keyOpts: string[]) => CloudRunner;
+}
 
 /** Strip persisted tunnel template down to path?query (Daytona preview host is prepended). */
 function tunnelTemplateToUrlSuffix(template: string): string {
@@ -116,6 +129,45 @@ async function checkSecurityAlerts(ip: string, user: string, keyOpts: string[]):
   });
   if (!result.ok) {
     // Silently ignore — security check is best-effort
+  }
+}
+
+export async function runOpenClawReconnectPreflight(
+  connection: VMConnection,
+  agentKey: string | undefined,
+  keyOpts: string[],
+  options?: OpenClawReconnectPreflightOptions,
+): Promise<boolean> {
+  if (agentKey !== "openclaw") {
+    return false;
+  }
+  if (connection.deleted || connection.ip === "sprite-console" || connection.cloud === "daytona") {
+    return false;
+  }
+
+  const runner = options?.makeRunner
+    ? options.makeRunner(connection.ip, connection.user, keyOpts)
+    : makeSshRunner(connection.ip, connection.user, keyOpts);
+  const openclaw = createCloudAgentsFromModules(runner).resolveAgent("openclaw");
+  if (!openclaw.preLaunch) {
+    return false;
+  }
+
+  p.log.step("Ensuring OpenClaw heartbeat is disabled and gateway is running...");
+  await openclaw.preLaunch();
+  return true;
+}
+
+async function bestEffortOpenClawReconnectPreflight(
+  connection: VMConnection,
+  agentKey: string | undefined,
+  keyOpts: string[],
+  options?: OpenClawReconnectPreflightOptions,
+): Promise<void> {
+  const result = await asyncTryCatch(() => runOpenClawReconnectPreflight(connection, agentKey, keyOpts, options));
+  if (!result.ok) {
+    logWarn(`OpenClaw heartbeat cleanup failed: ${getErrorMessage(result.error)}`);
+    p.log.info(`Continuing with reconnect. To retry cleanup, run ${pc.cyan(`${AGENTSEA_CLI} fix`)} for this server.`);
   }
 }
 
@@ -226,6 +278,7 @@ export async function cmdConnect(connection: VMConnection, agentKey?: string): P
   p.log.step(`Connecting to ${pc.bold(connection.ip)}...`);
   const sshCmd = `ssh ${connection.user}@${connection.ip}`;
   const keyOpts = getSshKeyOpts(await ensureSshKeys());
+  await bestEffortOpenClawReconnectPreflight(connection, agentKey, keyOpts);
 
   return runInteractiveCommand(
     "ssh",
@@ -352,6 +405,9 @@ export async function cmdEnterAgent(
     return;
   }
 
+  const keyOpts = getSshKeyOpts(await ensureSshKeys());
+  await bestEffortOpenClawReconnectPreflight(connection, agentKey, keyOpts);
+
   // Re-establish SSH tunnel for web dashboard if tunnel metadata was persisted at agentsea time
   let tunnelHandle: SshTunnelHandle | undefined;
   let t3PairingWatcher: { stop: () => void } | undefined;
@@ -374,19 +430,18 @@ export async function cmdEnterAgent(
     }
 
     const tunnelResult = await asyncTryCatchIf(isOperationalError, async () => {
-      const keys = await ensureSshKeys();
       tunnelHandle = await startSshTunnel({
         host: connection.ip,
         user: connection.user,
         remotePort: Number(tunnelPort),
-        sshKeyOpts: getSshKeyOpts(keys),
+        sshKeyOpts: keyOpts,
       });
       const urlTemplate = connection.metadata?.tunnel_browser_url_template;
       if (agentKey === "t3code") {
         t3PairingWatcher = startT3PairingBrowserWatcher({
           ip: connection.ip,
           user: connection.user,
-          sshKeyOpts: getSshKeyOpts(keys),
+          sshKeyOpts: keyOpts,
           localPort: tunnelHandle.localPort,
         });
       } else if (urlTemplate) {
@@ -399,7 +454,6 @@ export async function cmdEnterAgent(
   }
 
   // Check for security alerts before entering the session
-  const keyOpts = getSshKeyOpts(await ensureSshKeys());
   await checkSecurityAlerts(connection.ip, connection.user, keyOpts);
 
   // Standard SSH connection with agent launch
@@ -478,7 +532,9 @@ export async function cmdOpenDashboard(connection: VMConnection, agentKey?: stri
   }
 
   const keys = await ensureSshKeys();
+  const keyOpts = getSshKeyOpts(keys);
   const resolvedAgent = agentKey ?? "";
+  await bestEffortOpenClawReconnectPreflight(connection, agentKey, keyOpts);
 
   if (resolvedAgent === "hermes") {
     p.log.step("Ensuring Hermes dashboard is running on the VM...");
@@ -488,7 +544,7 @@ export async function cmdOpenDashboard(connection: VMConnection, agentKey?: stri
         [
           "ssh",
           ...SSH_BASE_OPTS,
-          ...getSshKeyOpts(keys),
+          ...keyOpts,
           `${connection.user}@${connection.ip}`,
           hermesScript,
         ],
@@ -515,7 +571,7 @@ export async function cmdOpenDashboard(connection: VMConnection, agentKey?: stri
       host: connection.ip,
       user: connection.user,
       remotePort: Number(tunnelPort),
-      sshKeyOpts: getSshKeyOpts(keys),
+      sshKeyOpts: keyOpts,
     }),
   );
   if (!tunnelResult.ok) {
@@ -529,7 +585,7 @@ export async function cmdOpenDashboard(connection: VMConnection, agentKey?: stri
     const watcher = startT3PairingBrowserWatcher({
       ip: connection.ip,
       user: connection.user,
-      sshKeyOpts: getSshKeyOpts(keys),
+      sshKeyOpts: keyOpts,
       localPort: handle.localPort,
     });
     p.log.success("Waiting for T3 Code — pairing URL will open automatically when the server is ready.");

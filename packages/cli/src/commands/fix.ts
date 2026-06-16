@@ -41,6 +41,15 @@ export interface FixOptions {
   makeRunner?: (ip: string, user: string, keyOpts: string[]) => CloudRunner;
 }
 
+export interface CmdFixOptions extends FixOptions {
+  /** Fix all active servers instead of selecting one. */
+  all?: boolean;
+  /** Restrict --all to a specific agent slug. */
+  agent?: string;
+  /** Override manifest loading for tests. */
+  manifest?: Manifest | null;
+}
+
 /**
  * Run the full fix pipeline on a remote VM:
  * 1. Re-inject env vars + ensure shell rc files source ~/.agentsearc
@@ -243,7 +252,7 @@ export async function fixAgentsea(record: AgentseaRecord, manifest: Manifest | n
   p.log.info(`Reconnect: ${pc.cyan(`${AGENTSEA_CLI} last`)}`);
 }
 
-export async function cmdFix(agentseaId?: string, options?: FixOptions): Promise<void> {
+export async function cmdFix(agentseaId?: string, options?: CmdFixOptions): Promise<void> {
   const servers = getActiveServers();
 
   if (servers.length === 0) {
@@ -252,8 +261,44 @@ export async function cmdFix(agentseaId?: string, options?: FixOptions): Promise
     return;
   }
 
-  const manifestResult = await asyncTryCatch(() => loadManifest());
-  const manifest = manifestResult.ok ? manifestResult.data : null;
+  let manifest: Manifest | null;
+  if (Object.hasOwn(options ?? {}, "manifest")) {
+    manifest = options?.manifest ?? null;
+  } else {
+    const manifestResult = await asyncTryCatch(() => loadManifest());
+    manifest = manifestResult.ok ? manifestResult.data : null;
+  }
+
+  if (options?.all && agentseaId) {
+    logError(`${AGENTSEA_CLI} fix --all cannot be combined with a specific agentsea name/ID.`);
+    p.log.info(`Use ${pc.cyan(`${AGENTSEA_CLI} fix --all --agent openclaw`)} to repair all OpenClaw servers.`);
+    process.exit(1);
+  }
+
+  if (options?.agent) {
+    const agentValidation = tryCatch(() => validateIdentifier(options.agent!, "Agent name"));
+    if (!agentValidation.ok) {
+      logError(`Invalid agent filter: ${getErrorMessage(agentValidation.error)}`);
+      process.exit(1);
+    }
+  }
+
+  if (options?.all) {
+    const targets = options.agent ? servers.filter((r) => r.agent === options.agent) : servers;
+    if (targets.length === 0) {
+      const scope = options.agent ? `${pc.bold(options.agent)} ` : "";
+      p.log.info(`No active ${scope}agentseas to fix.`);
+      p.log.info(`For recursive spawns, run ${pc.cyan(`${AGENTSEA_CLI} pull-history`)} first, then retry.`);
+      return;
+    }
+
+    const scope = options.agent ? `${pc.bold(options.agent)} ` : "";
+    p.log.step(`Fixing ${targets.length} active ${scope}agentsea${targets.length === 1 ? "" : "s"}...`);
+    for (const record of targets) {
+      await fixAgentsea(record, manifest, options);
+    }
+    return;
+  }
 
   // If a specific name/id is given, find and fix it directly
   if (agentseaId) {

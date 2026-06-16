@@ -167,6 +167,16 @@ describe("grid doc parity (static expectations)", () => {
     expect(src).toContain("contextWindow: spec.contextWindow");
   });
 
+  it("OpenClaw merge script disables scheduled heartbeats by default", () => {
+    const src = readFileSync(AGENT_SETUP_TS, "utf-8");
+    expect(src).toContain('const OPENCLAW_HEARTBEAT_EVERY_DEFAULT = "0"');
+    expect(src).toContain('const OPENCLAW_HEARTBEAT_EVERY_ENV = "AGENTSEA_OPENCLAW_HEARTBEAT_EVERY"');
+    expect(src).toContain("OPENCLAW_HEARTBEAT_NORMALIZE_NODE_SCRIPT");
+    expect(src).toContain("AGENTSEA_OPENCLAW_HEARTBEAT_EVERY||'0'");
+    expect(src).toContain("const heartbeatPatch = { every: heartbeatEvery }");
+    expect(src).toContain("cfg.agents.defaults.heartbeat = Object.assign");
+  });
+
   it("verify.sh enforces Grid doc parity for all enabled agents", () => {
     const verifySh = readFileSync(VERIFY_SH, "utf-8");
     for (const slug of E2E_AGENT_SLUGS) {
@@ -204,6 +214,54 @@ describe("grid doc parity (configure uploads)", () => {
     expect(uploaded).toContain("auxiliary:");
     expect(uploaded).toContain("compression:");
     expect(uploaded).not.toContain("https://api.thegrid.ai");
+  });
+
+  it("OpenClaw configure writes heartbeat.every=0 unless explicitly overridden", async () => {
+    const previous = process.env.AGENTSEA_OPENCLAW_HEARTBEAT_EVERY;
+    try {
+      delete process.env.AGENTSEA_OPENCLAW_HEARTBEAT_EVERY;
+      const defaultRunner = captureRunner();
+      const { agents: defaultAgents } = createCloudAgents(defaultRunner);
+      await defaultAgents.openclaw.configure!("test-key");
+      expect(defaultRunner.commands.join("\n")).toContain('const heartbeatEvery = "0";');
+
+      process.env.AGENTSEA_OPENCLAW_HEARTBEAT_EVERY = "6h";
+      const overrideRunner = captureRunner();
+      const { agents: overrideAgents } = createCloudAgents(overrideRunner);
+      await overrideAgents.openclaw.configure!("test-key");
+      expect(overrideRunner.commands.join("\n")).toContain('const heartbeatEvery = "6h";');
+    } finally {
+      if (previous === undefined) {
+        delete process.env.AGENTSEA_OPENCLAW_HEARTBEAT_EVERY;
+      } else {
+        process.env.AGENTSEA_OPENCLAW_HEARTBEAT_EVERY = previous;
+      }
+    }
+  });
+
+  it("OpenClaw gateway startup normalizes heartbeat interval for reconnected VMs", async () => {
+    const runner = captureRunner();
+    const { agents: localAgents } = createCloudAgents(runner);
+    await localAgents.openclaw.preLaunch!();
+    const commands = runner.commands.join("\n");
+    const normalizeMatch = /printf '%s' '([^']+)' \| base64 -d > \/tmp\/oc-normalize\.mjs/.exec(commands);
+    expect(normalizeMatch).not.toBeNull();
+    const normalizeScript = Buffer.from(normalizeMatch![1], "base64").toString("utf-8");
+    expect(normalizeScript).toContain("AGENTSEA_OPENCLAW_HEARTBEAT_EVERY || '0'");
+    expect(normalizeScript).toContain("cfg.agents.defaults.heartbeat = Object.assign");
+    expect(commands).toContain("openclaw-gateway-wrapper");
+  });
+
+  it("OpenClaw auto-update normalizes heartbeat interval for existing VMs", () => {
+    const runner = captureRunner();
+    const { agents: localAgents } = createCloudAgents(runner);
+    const cmd = localAgents.openclaw.updateCmd ?? "";
+    expect(cmd).toContain("openclaw@");
+    expect(cmd).toContain("AGENTSEA_OPENCLAW_HEARTBEAT_EVERY");
+    expect(cmd).toContain(".openclaw/openclaw.json");
+    expect(cmd).toContain("_agentsea_openclaw_update_exit=$?");
+    expect(cmd).toContain("exit $_agentsea_openclaw_update_exit");
+    expect(cmd).not.toContain("${");
   });
 
   it("OpenCode configure uploads thegrid provider in opencode.json", async () => {

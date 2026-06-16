@@ -36,6 +36,7 @@ function getHelpUsageSection(): string {
   agentsea delete                       Delete a previously spawned server (aliases: rm, destroy, kill)
   agentsea delete -a <agent>            Filter servers by agent
   agentsea delete -c <cloud>            Filter servers by cloud
+  agentsea delete -a <agent> --yes      Headless delete all matching servers
   agentsea delete --name <name> --yes   Headless delete by name (no prompts)
   agentsea status                       Show live state of cloud servers (aliases: ps)
   agentsea status -a <agent>            Filter status by agent (or --agent)
@@ -43,6 +44,7 @@ function getHelpUsageSection(): string {
   agentsea status --prune               Remove gone servers from history
   agentsea fix                          Full VM recovery (credentials, install, config, daemons)
   agentsea fix <agentsea-id>               Fix a specific agentsea by name or ID
+  agentsea fix --all --agent openclaw   Repair all active OpenClaw VMs in local history
   agentsea resume                       Continue provisioning an incomplete/failed agentsea (SSH clouds)
   agentsea resume <agentsea-id>            Resume a specific incomplete agentsea
   agentsea resume --recover             Import crash-safe checkpoints from ~/.config/agentsea/runs/
@@ -59,6 +61,7 @@ function getHelpUsageSection(): string {
   agentsea clouds                       List all cloud providers
   agentsea tree                         Show recursive agentsea tree (parent/child relationships)
   agentsea tree --json                  Output agentsea tree as JSON
+  agentsea pull-history                 Recursively import child VM history
   agentsea history export               Dump history as JSON to stdout
   agentsea feedback "message"            Send feedback to the AgentSea team
   agentsea uninstall                    Uninstall agentsea CLI and optionally remove data

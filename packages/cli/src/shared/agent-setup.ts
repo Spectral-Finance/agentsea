@@ -88,6 +88,24 @@ function agentsearcGridInferenceExtras(): string[] {
 /** Default Control UI `/chat` session path (agentsea OpenClaw uses agent `main`). */
 const OPENCLAW_CONTROL_UI_DEFAULT_CHAT_SESSION = "agent:main:main";
 
+/** Default OpenClaw heartbeat interval for AgentSea deployments. "0" disables the model-calling loop. */
+const OPENCLAW_HEARTBEAT_EVERY_DEFAULT = "0";
+const OPENCLAW_HEARTBEAT_EVERY_ENV = "AGENTSEA_OPENCLAW_HEARTBEAT_EVERY";
+
+function resolveOpenClawHeartbeatEvery(): string {
+  return process.env[OPENCLAW_HEARTBEAT_EVERY_ENV]?.trim() || OPENCLAW_HEARTBEAT_EVERY_DEFAULT;
+}
+
+const OPENCLAW_HEARTBEAT_NORMALIZE_NODE_SCRIPT =
+  "const fs=require('fs');const p=(process.env.HOME||'')+'/.openclaw/openclaw.json';" +
+  "try{const cfg=JSON.parse(fs.readFileSync(p,'utf8'));" +
+  "const every=(process.env.AGENTSEA_OPENCLAW_HEARTBEAT_EVERY||'0').trim()||'0';" +
+  "cfg.agents=cfg.agents||{};cfg.agents.defaults=cfg.agents.defaults||{};" +
+  "cfg.agents.defaults.heartbeat=Object.assign(cfg.agents.defaults.heartbeat||{},{every});" +
+  "fs.writeFileSync(p,JSON.stringify(cfg,null,2)+'\\n');fs.chmodSync(p,0o600)}catch(e){}";
+
+const OPENCLAW_HEARTBEAT_NORMALIZE_CMD = `node -e ${shellQuote(OPENCLAW_HEARTBEAT_NORMALIZE_NODE_SCRIPT)}`;
+
 /**
  * Wrap an SSH-based async operation into a Result for use with withRetry.
  * - Transient SSH/connection errors → Err (retryable)
@@ -631,6 +649,7 @@ async function mergeOpenClawGridInferenceProvider(
   const inferLit = JSON.stringify(openClawMessagesBase);
   const slugsLit = JSON.stringify(instruments.registered);
   const utilityLit = JSON.stringify(instruments.utility ?? "");
+  const heartbeatEveryLit = JSON.stringify(resolveOpenClawHeartbeatEvery());
   // OpenSSL-claw validates config by resolving `${THEGRID_API_KEY}` markers; systemd/gateway shells may not
   // export `THEGRID_*` yet. Persist the Grid key inlined (openclaw.json is chmod 600 on the VM).
   const apiKeyLit = JSON.stringify(plaintextApiKey);
@@ -655,6 +674,7 @@ async function mergeOpenClawGridInferenceProvider(
     `const infer = ${inferLit};`,
     `const slugs = ${slugsLit};`,
     `const utilitySlug = ${utilityLit};`,
+    `const heartbeatEvery = ${heartbeatEveryLit};`,
     `const modelSpecs = ${modelSpecsLit};`,
     "const providerId = process.env.AGENTSEA_GRID_PROVIDER_ID || 'thegrid';",
     "const ocPrimary = process.env.AGENTSEA_GRID_PRIMARY;",
@@ -692,11 +712,9 @@ async function mergeOpenClawGridInferenceProvider(
     "  const spec = modelSpecs[slug] || fallbackSpec;",
     "  cfg.agents.defaults.models[key] = { alias: 'The Grid (' + slug + ')', params: { maxTokens: spec.maxTokens } };",
     "}",
-    "if (utilitySlug) {",
-    "  cfg.agents.defaults.heartbeat = Object.assign(cfg.agents.defaults.heartbeat || {}, {",
-    "    model: providerId + '/' + utilitySlug,",
-    "  });",
-    "}",
+    "const heartbeatPatch = { every: heartbeatEvery };",
+    "if (utilitySlug) heartbeatPatch.model = providerId + '/' + utilitySlug;",
+    "cfg.agents.defaults.heartbeat = Object.assign(cfg.agents.defaults.heartbeat || {}, heartbeatPatch);",
     "fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2)); fs.chmodSync(cfgPath, 0o600);",
   ].join(" ");
 
@@ -723,8 +741,12 @@ async function setupOpenclawConfig(
 ): Promise<void> {
   const instruments = resolveHarnessGridInstruments("openclaw", normalizeGridCatalogModelId(modelId));
   const catalogModelId = instruments.primary;
+  const heartbeatEvery = resolveOpenClawHeartbeatEvery();
 
   logInfo(`OpenClaw configure (${catalogModelId}): Chrome → onboard → Grid merge → prefs.`);
+  if (heartbeatEvery === OPENCLAW_HEARTBEAT_EVERY_DEFAULT) {
+    logInfo(`OpenClaw heartbeat interval disabled by default (set ${OPENCLAW_HEARTBEAT_EVERY_ENV}=30m to opt in).`);
+  }
   logStep("Configuring openclaw...");
   await runner.runServer("mkdir -p ~/.openclaw");
   const openClawMessagesBase = resolveGridOpenClawMessagesBase();
@@ -830,13 +852,14 @@ async function setupOpenclawConfig(
               primary: ocPrimary,
             },
             models: ocModels,
-            ...(instruments.utility
-              ? {
-                  heartbeat: {
+            heartbeat: {
+              every: heartbeatEvery,
+              ...(instruments.utility
+                ? {
                     model: openClawGridPrimaryModel(instruments.utility),
-                  },
-                }
-              : {}),
+                  }
+                : {}),
+            },
             sandbox: {
               mode: "off",
             },
@@ -1058,7 +1081,12 @@ export async function startGateway(runner: CloudRunner): Promise<void> {
     "    tg.streaming = { mode: tg.streaming };",
     "    fs.writeFileSync(p, JSON.stringify(cfg, null, 2));",
     "  }",
-    "} catch (e) {}",
+    "  const heartbeatEvery = (process.env.AGENTSEA_OPENCLAW_HEARTBEAT_EVERY || '0').trim() || '0';",
+    "  cfg.agents ||= {};",
+    "  cfg.agents.defaults ||= {};",
+    "  cfg.agents.defaults.heartbeat = Object.assign(cfg.agents.defaults.heartbeat || {}, { every: heartbeatEvery });",
+    "  fs.writeFileSync(p, JSON.stringify(cfg, null, 2));",
+  "} catch (e) {}",
   ].join("\n");
 
   validateScriptTemplate(wrapperScript, "gateway-wrapper");
@@ -1890,7 +1918,10 @@ function createAgents(runner: CloudRunner): Record<string, AgentConfig> {
               OPENCLAW_CONTROL_UI_DEFAULT_CHAT_SESSION,
             )}&token=${encodeURIComponent(dashboardToken)}#token=${dashboardToken}`,
         },
-        updateCmd: `${NPM_AUTO_UPDATE_SETUP} && ` + `npm install -g $_NPM_G_FLAGS openclaw@${OPENCLAW_GRID_PINNED_VERSION}`,
+        updateCmd:
+          `${NPM_AUTO_UPDATE_SETUP} && ` +
+          `npm install -g $_NPM_G_FLAGS openclaw@${OPENCLAW_GRID_PINNED_VERSION}; ` +
+          `_agentsea_openclaw_update_exit=$?; ${OPENCLAW_HEARTBEAT_NORMALIZE_CMD}; exit $_agentsea_openclaw_update_exit`,
       };
     })(),
 
