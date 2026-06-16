@@ -12,6 +12,7 @@ import { handleBillingError, isBillingError, showNonBillingError } from "../shar
 import { AGENTSEA_CLI } from "../shared/cli-invocation.js";
 import { getPackagesForTier, cloudInitAptBootstrapLines, NODE_INSTALL_CMD, needsBun, needsNode } from "../shared/cloud-init.js";
 import { generateCsrfState, OAUTH_CSS } from "../shared/oauth.js";
+import { pickToTTY } from "../picker.js";
 import { parseJsonObj } from "../shared/parse.js";
 import { getAgentseaCloudConfigPath } from "../shared/paths.js";
 import {
@@ -499,11 +500,17 @@ export async function promptSwitchAccount(): Promise<boolean> {
     logInfo(`Logged in as: ${info.email}${teamSuffix} — status: ${info.status}`);
   }
 
-  const shouldSwitch = await p.confirm({
+  // Read from /dev/tty (pickToTTY) — Clack's process.stdin reader can't receive
+  // input in curl|bash / remote contexts (the input-hang bug).
+  const shouldSwitch = pickToTTY({
     message: "Wrong account? Switch to a different DigitalOcean account?",
-    initialValue: false,
+    options: [
+      { value: "no", label: "No" },
+      { value: "yes", label: "Yes" },
+    ],
+    defaultValue: "no",
   });
-  if (p.isCancel(shouldSwitch) || !shouldSwitch) {
+  if (shouldSwitch !== "yes") {
     return false;
   }
 
