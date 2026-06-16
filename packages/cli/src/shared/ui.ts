@@ -448,21 +448,23 @@ export async function selectFromList(items: string[], promptText: string, defaul
     return parsed[0].id;
   }
 
-  const result = await p.select({
+  // Read from /dev/tty (pickToTTY) instead of Clack's process.stdin reader, which
+  // can't receive input in curl|bash / remote contexts (the input-hang bug).
+  const choice = pickToTTY({
     message: `Select ${promptText}`,
     options: parsed.map((item) => ({
       value: item.id,
       label: item.id,
       hint: item.label,
     })),
-    initialValue: defaultValue,
+    defaultValue,
   });
 
-  if (p.isCancel(result)) {
+  if (choice === null) {
     process.stderr.write("\n");
     process.exit(0);
   }
-  return isString(result) ? result : String(result);
+  return choice;
 }
 
 function tryFirstNonLoopbackIpv4FromHostnameDashI(): string | undefined {
